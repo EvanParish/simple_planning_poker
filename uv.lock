@@ -817,6 +817,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "nicegui" },
+    { name = "python-dotenv" },
 ]
 
 [package.dev-dependencies]
@@ -827,7 +828,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "nicegui", specifier = ">=3.9.0" }]
+requires-dist = [
+    { name = "nicegui", specifier = ">=3.9.0" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
+]
 
 [package.metadata.requires-dev]
 dev = [
