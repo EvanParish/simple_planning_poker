@@ -2,11 +2,14 @@ import os
 import uuid
 
 from dotenv import load_dotenv
+
+load_dotenv()
+
 from nicegui import app, ui  # noqa: E402
 
 import state  # noqa: E402
+from ui import render_average_banner, render_header, render_user_list, render_voting_bar  # noqa: E402
 
-load_dotenv()
 
 def _get_or_create_client_id() -> str:
     storage = app.storage.user
@@ -53,11 +56,12 @@ async def _on_join_room(name_input: ui.input, room_code_input: ui.input):
         ui.notify('That name is already taken in this room. Please choose another.', type='warning')
         return
 
+    state.notify_room(room.room_code)
     ui.navigate.to(f'/room/{room.room_code}')
 
 
 @ui.page('/')
-def landing_page():
+def landing_page(room: str = ''):
     ui.query('body').classes('bg-gray-100')
 
     with ui.card().classes('absolute-center w-96 p-8'):
@@ -73,6 +77,7 @@ def landing_page():
         room_code_input = ui.input(
             label='Room Code',
             placeholder='6-digit code',
+            value=room,
             validation={'Must be 6 alphanumeric characters': lambda v: not v or (len(v) == 6 and v.isalnum())},
         ).classes('w-full')
 
@@ -83,6 +88,41 @@ def landing_page():
             ).classes('flex-1')
 
 
+def _setup_room_listeners(room_code: str, room_content) -> None:
+    """Register this client for real-time room updates; auto-cleanup on disconnect."""
+    client = ui.context.client
+
+    def on_update():
+        with client:
+            room_content.refresh()
+
+    state.register_listener(room_code, on_update)
+    client.on_disconnect(lambda: state.unregister_listener(room_code, on_update))
+
+
+def _make_room_handlers(room, client_id):
+    """Create event handler callbacks for a room participant."""
+    code = room.room_code
+
+    def on_vote(card: str):
+        state.submit_vote(room, client_id, card)
+        state.notify_room(code)
+
+    def on_reveal():
+        state.reveal_votes(room)
+        state.notify_room(code)
+
+    def on_reset():
+        state.reset_round(room)
+        state.notify_room(code)
+
+    def on_toggle_observer():
+        state.toggle_observer(room, client_id)
+        state.notify_room(code)
+
+    return on_vote, on_reveal, on_reset, on_toggle_observer
+
+
 @ui.page('/room/{room_code}')
 def room_page(room_code: str):
     room = state.get_room(room_code)
@@ -91,29 +131,31 @@ def room_page(room_code: str):
         return
 
     client_id = _get_or_create_client_id()
-    user = room.users.get(client_id)
+    if client_id not in room.users:
+        ui.navigate.to(f'/?room={room.room_code}')
+        return
+
+    on_vote, on_reveal, on_reset, on_toggle_observer = _make_room_handlers(room, client_id)
 
     ui.query('body').classes('bg-gray-100')
 
-    with ui.column().classes('w-full max-w-2xl mx-auto p-4'):
-        with ui.row().classes('w-full items-center justify-between'):
-            ui.label(f'Room {room.room_code}').classes('text-2xl font-bold')
-            ui.button(
-                icon='content_copy',
-                on_click=lambda: ui.clipboard.write(
-                    f'{ui.run_javascript("window.location.origin")}/room/{room.room_code}'
-                ),
-            ).props('flat round').tooltip('Copy invite link')
+    @ui.refreshable
+    def room_content():
+        user = room.users.get(client_id)
+        if user is None:
+            return
 
-        if user:
-            ui.label(f'Welcome, {user.name}!').classes('text-lg text-gray-600')
-            if user.is_moderator:
-                ui.badge('Moderator', color='primary').classes('mt-1')
-        else:
-            ui.label('You are not in this room.').classes('text-gray-500')
-            ui.button('Go Home', on_click=lambda: ui.navigate.to('/')).classes('mt-2')
+        with ui.column().classes('w-full max-w-2xl mx-auto p-4 gap-4'):
+            render_header(room, user.is_moderator, on_reveal, on_reset)
+            render_user_list(room)
 
-        ui.label('Voting UI coming in Phase 3...').classes('text-gray-400 mt-8 text-center w-full')
+            if room.is_revealed:
+                render_average_banner(state.calculate_average(room))
+
+            render_voting_bar(user.vote, user.is_observer, room.is_revealed, on_vote, on_toggle_observer)
+
+    room_content()
+    _setup_room_listeners(room.room_code, room_content)
 
 
 ui.run(

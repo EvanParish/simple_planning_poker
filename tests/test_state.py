@@ -24,11 +24,9 @@ class TestGenerateRoomCode:
 
     def test_uniqueness(self):
         codes = {state.generate_room_code() for _ in range(50)}
-        # With 36^6 possibilities, 50 codes should all be unique
         assert len(codes) == 50
 
     def test_avoids_existing_codes(self):
-        # Fill state with a known code, ensure generator skips it
         state.rooms['AAAAAA'] = Room(room_code='AAAAAA')
         code = state.generate_room_code()
         assert code != 'AAAAAA'
@@ -124,7 +122,15 @@ class TestRemoveRoom:
         assert state.get_room(code) is None
 
     def test_remove_nonexistent_noop(self):
-        state.remove_room('NOROOM')  # should not raise
+        state.remove_room('NOROOM')
+
+    def test_remove_also_clears_listeners(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        callback = lambda: None  # noqa: E731
+        state.register_listener(code, callback)
+        state.remove_room(code)
+        assert code not in state._room_listeners
 
 
 class TestClearAllRooms:
@@ -134,3 +140,162 @@ class TestClearAllRooms:
         assert len(state.rooms) == 2
         state.clear_all_rooms()
         assert len(state.rooms) == 0
+
+    def test_clears_listeners(self):
+        room = state.create_room('c1', 'Alice')
+        state.register_listener(room.room_code, lambda: None)
+        state.clear_all_rooms()
+        assert len(state._room_listeners) == 0
+
+
+class TestSubmitVote:
+    def test_submit_valid_vote(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.submit_vote(room, 'c1', '5') is True
+        assert room.users['c1'].vote == '5'
+
+    def test_change_vote(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        state.submit_vote(room, 'c1', '13')
+        assert room.users['c1'].vote == '13'
+
+    def test_vote_special_cards(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.submit_vote(room, 'c1', '?') is True
+        assert room.users['c1'].vote == '?'
+        assert state.submit_vote(room, 'c1', '☕') is True
+        assert room.users['c1'].vote == '☕'
+
+    def test_reject_when_revealed(self):
+        room = state.create_room('c1', 'Alice')
+        state.reveal_votes(room)
+        assert state.submit_vote(room, 'c1', '5') is False
+
+    def test_reject_observer(self):
+        room = state.create_room('c1', 'Alice')
+        room.users['c1'].is_observer = True
+        assert state.submit_vote(room, 'c1', '5') is False
+
+    def test_reject_invalid_card(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.submit_vote(room, 'c1', '99') is False
+
+    def test_reject_unknown_user(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.submit_vote(room, 'nobody', '5') is False
+
+
+class TestRevealVotes:
+    def test_reveal(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        state.reveal_votes(room)
+        assert room.is_revealed is True
+
+
+class TestResetRound:
+    def test_clears_votes_and_revealed(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '5')
+        state.submit_vote(room, 'c2', '8')
+        state.reveal_votes(room)
+
+        state.reset_round(room)
+        assert room.is_revealed is False
+        assert room.users['c1'].vote is None
+        assert room.users['c2'].vote is None
+
+
+class TestToggleObserver:
+    def test_toggle_on_clears_vote(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        result = state.toggle_observer(room, 'c1')
+        assert result is True
+        assert room.users['c1'].is_observer is True
+        assert room.users['c1'].vote is None
+
+    def test_toggle_off(self):
+        room = state.create_room('c1', 'Alice')
+        room.users['c1'].is_observer = True
+        result = state.toggle_observer(room, 'c1')
+        assert result is False
+        assert room.users['c1'].is_observer is False
+
+    def test_unknown_user_returns_none(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.toggle_observer(room, 'nobody') is None
+
+
+class TestCalculateAverage:
+    def test_numeric_votes(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '5')
+        state.submit_vote(room, 'c2', '8')
+        assert state.calculate_average(room) == 6.5
+
+    def test_excludes_special_cards(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.join_room(room, 'c3', 'Charlie')
+        state.submit_vote(room, 'c1', '5')
+        state.submit_vote(room, 'c2', '?')
+        state.submit_vote(room, 'c3', '☕')
+        assert state.calculate_average(room) == 5.0
+
+    def test_no_numeric_votes(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '?')
+        assert state.calculate_average(room) is None
+
+    def test_no_votes_at_all(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.calculate_average(room) is None
+
+    def test_single_vote(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '21')
+        assert state.calculate_average(room) == 21.0
+
+
+class TestRoomListeners:
+    def test_register_and_notify(self):
+        calls = []
+        state.register_listener('ROOM01', lambda: calls.append(1))
+        state.notify_room('ROOM01')
+        assert calls == [1]
+
+    def test_multiple_listeners(self):
+        calls = []
+        state.register_listener('ROOM01', lambda: calls.append('a'))
+        state.register_listener('ROOM01', lambda: calls.append('b'))
+        state.notify_room('ROOM01')
+        assert calls == ['a', 'b']
+
+    def test_unregister(self):
+        calls = []
+        cb = lambda: calls.append(1)  # noqa: E731
+        state.register_listener('ROOM01', cb)
+        state.unregister_listener('ROOM01', cb)
+        state.notify_room('ROOM01')
+        assert calls == []
+
+    def test_unregister_nonexistent_noop(self):
+        state.unregister_listener('NOPE', lambda: None)
+
+    def test_notify_empty_room(self):
+        state.notify_room('EMPTY1')  # should not raise
+
+    def test_exception_in_listener_does_not_break_others(self):
+        calls = []
+
+        def bad_cb():
+            raise RuntimeError('oops')
+
+        state.register_listener('ROOM01', bad_cb)
+        state.register_listener('ROOM01', lambda: calls.append('ok'))
+        state.notify_room('ROOM01')
+        assert calls == ['ok']
