@@ -132,6 +132,24 @@ def toggle_observer(room: Room, client_id: str) -> bool | None:
     return user.is_observer
 
 
+def should_auto_reveal(room: Room) -> bool:
+    """Return True if all active non-observer users have voted."""
+    if room.is_revealed:
+        return False
+    voters = [u for u in room.active_users() if not u.is_observer]
+    if not voters:
+        return False
+    return all(u.vote is not None for u in voters)
+
+
+def check_and_auto_reveal(room: Room) -> bool:
+    """Auto-reveal if all eligible users have voted. Returns True if revealed."""
+    if should_auto_reveal(room):
+        reveal_votes(room)
+        return True
+    return False
+
+
 def calculate_average(room: Room) -> float | None:
     """Calculate average of numeric votes. Returns None if no numeric votes."""
     numeric = [int(u.vote) for u in room.users.values() if u.vote in NUMERIC_CARDS]

@@ -114,5 +114,12 @@ AI Assistant: Execute this build sequentially. Do not move to the next phase unt
     * Implement the Late Joiner logic (read-only state if joined while `is_revealed == True`).
 * **Phase 5: Connection Resilience**
     * Implement the 15-second disconnect grace period.
+    * The global page timeout on all pages should be extended from the default to 10 seconds to avoid premature 5xx errors.
     * Implement the visual "Reconnecting..." state.
     * Implement Moderator Inheritance (transferring moderator to the oldest `joined_at` participant if the moderator fully disconnects).
+* **Phase 6: Current Context & UI Cleanup**
+    * Implement an optional text area near the top of the page (above the user list) were the moderator can enter text about the current issue being discussed.
+    * Ideally, if a link to a github issue is provided the display is shortened to the issue number that the users can click on to open the issue in their browser.
+    * Place the "cards" above the user list.
+    * Update the Observer Mode toggle to look like a checkbox.
+

@@ -106,6 +106,7 @@ def _make_room_handlers(room, client_id):
 
     def on_vote(card: str):
         state.submit_vote(room, client_id, card)
+        state.check_and_auto_reveal(room)
         state.notify_room(code)
 
     def on_reveal():
@@ -118,6 +119,7 @@ def _make_room_handlers(room, client_id):
 
     def on_toggle_observer():
         state.toggle_observer(room, client_id)
+        state.check_and_auto_reveal(room)
         state.notify_room(code)
 
     return on_vote, on_reveal, on_reset, on_toggle_observer

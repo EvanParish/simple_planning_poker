@@ -55,3 +55,7 @@ All application logic (`models.py`, `state.py`, and any non-UI module) must have
 Tests live in a `tests/` directory mirroring the source structure (e.g., `tests/test_state.py` for `state.py`). Use `pytest` with `pytest-cov` for coverage.
 
 When adding or changing application logic, always add or update corresponding tests in the same commit.
+
+## Git Permissions
+
+- **DO NOT COMMIT CHANGES WITHOUT EXPLICIT USER APPROVAL** - Always wait for the user to review and approve changes before committing. This ensures that all modifications align with user expectations and project requirements.

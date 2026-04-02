@@ -229,6 +229,118 @@ class TestToggleObserver:
         assert state.toggle_observer(room, 'nobody') is None
 
 
+class TestShouldAutoReveal:
+    def test_all_voted_triggers(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '5')
+        state.submit_vote(room, 'c2', '8')
+        assert state.should_auto_reveal(room) is True
+
+    def test_partial_votes_no_trigger(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '5')
+        assert state.should_auto_reveal(room) is False
+
+    def test_no_votes_no_trigger(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.should_auto_reveal(room) is False
+
+    def test_already_revealed_no_trigger(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        state.reveal_votes(room)
+        assert state.should_auto_reveal(room) is False
+
+    def test_observers_excluded_from_check(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        room.users['c2'].is_observer = True
+        state.submit_vote(room, 'c1', '5')
+        assert state.should_auto_reveal(room) is True
+
+    def test_all_observers_no_trigger(self):
+        room = state.create_room('c1', 'Alice')
+        room.users['c1'].is_observer = True
+        assert state.should_auto_reveal(room) is False
+
+    def test_special_cards_count_as_voted(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '?')
+        state.submit_vote(room, 'c2', '☕')
+        assert state.should_auto_reveal(room) is True
+
+    def test_disconnected_user_excluded(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        room.users['c2'].is_connected = False
+        state.submit_vote(room, 'c1', '5')
+        assert state.should_auto_reveal(room) is True
+
+    def test_single_user_voted(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '3')
+        assert state.should_auto_reveal(room) is True
+
+
+class TestCheckAndAutoReveal:
+    def test_reveals_when_all_voted(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        assert state.check_and_auto_reveal(room) is True
+        assert room.is_revealed is True
+
+    def test_no_reveal_when_partial(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '5')
+        assert state.check_and_auto_reveal(room) is False
+        assert room.is_revealed is False
+
+    def test_no_reveal_when_already_revealed(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        state.reveal_votes(room)
+        assert state.check_and_auto_reveal(room) is False
+
+    def test_observer_toggle_triggers_reveal(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '5')
+        state.toggle_observer(room, 'c2')
+        assert state.check_and_auto_reveal(room) is True
+        assert room.is_revealed is True
+
+
+class TestLateJoiner:
+    def test_late_joiner_cannot_vote_when_revealed(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        state.reveal_votes(room)
+        state.join_room(room, 'c2', 'Bob')
+        assert state.submit_vote(room, 'c2', '8') is False
+        assert room.users['c2'].vote is None
+
+    def test_late_joiner_can_vote_after_reset(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        state.reveal_votes(room)
+        state.join_room(room, 'c2', 'Bob')
+        state.reset_round(room)
+        assert state.submit_vote(room, 'c2', '8') is True
+        assert room.users['c2'].vote == '8'
+
+    def test_late_joiner_sees_revealed_state(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        state.reveal_votes(room)
+        state.join_room(room, 'c2', 'Bob')
+        assert room.is_revealed is True
+        assert room.users['c1'].vote == '5'
+
+
 class TestCalculateAverage:
     def test_numeric_votes(self):
         room = state.create_room('c1', 'Alice')
