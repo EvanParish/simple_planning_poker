@@ -17,6 +17,8 @@ from state import CARDS
 
 def _vote_status(user: User, is_revealed: bool) -> tuple[str, str]:
     """Returns (label, color) describing a user's current vote status."""
+    if not user.is_connected:
+        return ('Reconnecting...', 'orange')
     if user.is_observer:
         return ('Observer', 'grey')
     if not user.vote:
@@ -55,7 +57,7 @@ def render_user_row(user: User, is_revealed: bool) -> None:
 
 
 def render_user_list(room: Room) -> None:
-    sorted_users = sorted(room.active_users(), key=lambda u: u.joined_at)
+    sorted_users = sorted(room.users.values(), key=lambda u: u.joined_at)
     with ui.column().classes('w-full gap-2'):
         for user in sorted_users:
             render_user_row(user, room.is_revealed)

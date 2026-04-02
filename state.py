@@ -19,6 +19,7 @@ from models import Room, User
 
 ROOM_CODE_LENGTH = 6
 ROOM_CODE_CHARS = string.ascii_uppercase + string.digits
+DISCONNECT_GRACE_SECONDS = 15
 
 CARDS = ['1', '2', '3', '5', '8', '13', '21', '?', '☕']
 NUMERIC_CARDS = {'1', '2', '3', '5', '8', '13', '21'}
@@ -70,6 +71,7 @@ def join_room(room: Room, client_id: str, name: str) -> User | None:
         existing = room.users[client_id]
         existing.is_connected = True
         existing.last_seen = time()
+        existing.connect_epoch += 1
         return existing
 
     if has_duplicate_name(room, name):
@@ -177,3 +179,77 @@ def notify_room(room_code: str) -> None:
             cb()
         except Exception:
             pass
+
+
+# --- Connection lifecycle ---
+
+
+def mark_disconnected(room: Room, client_id: str) -> None:
+    """Mark a user as disconnected and record the timestamp."""
+    user = room.users.get(client_id)
+    if user is None:
+        return
+    user.is_connected = False
+    user.last_seen = time()
+
+
+def reconnect_user(room: Room, client_id: str) -> User | None:
+    """Re-mark a user as connected. Increments connect_epoch to invalidate stale disconnect timers."""
+    user = room.users.get(client_id)
+    if user is None:
+        return None
+    user.is_connected = True
+    user.last_seen = time()
+    user.connect_epoch += 1
+    return user
+
+
+def remove_user(room: Room, client_id: str) -> None:
+    """Fully remove a user from the room."""
+    room.users.pop(client_id, None)
+
+
+def inherit_moderator(room: Room) -> User | None:
+    """Transfer moderator to the oldest connected participant. Returns new mod or None."""
+    candidates = sorted(room.active_users(), key=lambda u: u.joined_at)
+    if not candidates:
+        return None
+    candidates[0].is_moderator = True
+    return candidates[0]
+
+
+def process_disconnect(room_code: str, client_id: str, connect_epoch: int) -> bool:
+    """Mark a client as disconnected if the epoch matches. Returns True if marked."""
+    room = get_room(room_code)
+    if room is None:
+        return False
+    user = room.users.get(client_id)
+    if user is None:
+        return False
+    if user.connect_epoch != connect_epoch:
+        return False
+    mark_disconnected(room, client_id)
+    notify_room(room_code)
+    return True
+
+
+def handle_disconnect_timeout(room_code: str, client_id: str) -> bool:
+    """Handle the end of a disconnect grace period. Returns True if user was removed."""
+    room = get_room(room_code)
+    if room is None:
+        return False
+    user = room.users.get(client_id)
+    if user is None:
+        return False
+    if user.is_connected:
+        return False
+    was_moderator = user.is_moderator
+    remove_user(room, client_id)
+    if not room.users:
+        remove_room(room_code)
+        return True
+    if was_moderator:
+        inherit_moderator(room)
+    check_and_auto_reveal(room)
+    notify_room(room_code)
+    return True

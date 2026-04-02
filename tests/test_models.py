@@ -16,6 +16,7 @@ class TestUser:
         assert u.is_connected is True
         assert isinstance(u.last_seen, float)
         assert isinstance(u.joined_at, float)
+        assert u.connect_epoch == 0
 
     def test_custom_fields(self):
         t = time()

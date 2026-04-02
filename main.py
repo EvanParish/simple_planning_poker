@@ -1,3 +1,4 @@
+import asyncio
 import os
 import uuid
 
@@ -88,16 +89,37 @@ def landing_page(room: str = ''):
             ).classes('flex-1')
 
 
-def _setup_room_listeners(room_code: str, room_content) -> None:
-    """Register this client for real-time room updates; auto-cleanup on disconnect."""
+async def _delayed_disconnect_removal(room_code: str, client_id: str, expected_epoch: int):
+    """Wait for the grace period, then remove the user if they haven't reconnected."""
+    await asyncio.sleep(state.DISCONNECT_GRACE_SECONDS)
+    room = state.get_room(room_code)
+    if room is None:
+        return
+    user = room.users.get(client_id)
+    if user is None:
+        return
+    if user.connect_epoch != expected_epoch:
+        return
+    state.handle_disconnect_timeout(room_code, client_id)
+
+
+def _setup_room_listeners(room_code: str, room_content, client_id: str) -> None:
+    """Register this client for real-time room updates; handle disconnect lifecycle."""
     client = ui.context.client
+    connect_epoch = state.get_room(room_code).users[client_id].connect_epoch
 
     def on_update():
         with client:
             room_content.refresh()
 
     state.register_listener(room_code, on_update)
-    client.on_disconnect(lambda: state.unregister_listener(room_code, on_update))
+
+    def on_disconnect():
+        state.unregister_listener(room_code, on_update)
+        if state.process_disconnect(room_code, client_id, connect_epoch):
+            asyncio.create_task(_delayed_disconnect_removal(room_code, client_id, connect_epoch))
+
+    client.on_disconnect(on_disconnect)
 
 
 def _make_room_handlers(room, client_id):
@@ -137,6 +159,9 @@ def room_page(room_code: str):
         ui.navigate.to(f'/?room={room.room_code}')
         return
 
+    state.reconnect_user(room, client_id)
+    state.notify_room(room.room_code)
+
     on_vote, on_reveal, on_reset, on_toggle_observer = _make_room_handlers(room, client_id)
 
     ui.query('body').classes('bg-gray-100')
@@ -157,13 +182,14 @@ def room_page(room_code: str):
             render_voting_bar(user.vote, user.is_observer, room.is_revealed, on_vote, on_toggle_observer)
 
     room_content()
-    _setup_room_listeners(room.room_code, room_content)
+    _setup_room_listeners(room.room_code, room_content, client_id)
 
 
 ui.run(
     title='Planning Poker',
     port=5858,
     reload=True,
+    reconnect_timeout=10.0,
     storage_secret=os.environ.get('STORAGE_SECRET', os.urandom(24).hex()),
     show=False,
 )

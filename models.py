@@ -14,6 +14,7 @@ class User:
     is_connected: bool = True
     last_seen: float = field(default_factory=time)
     joined_at: float = field(default_factory=time)
+    connect_epoch: int = 0
 
 
 @dataclass

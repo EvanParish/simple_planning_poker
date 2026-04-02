@@ -411,3 +411,207 @@ class TestRoomListeners:
         state.register_listener('ROOM01', lambda: calls.append('ok'))
         state.notify_room('ROOM01')
         assert calls == ['ok']
+
+
+class TestMarkDisconnected:
+    def test_marks_user_disconnected(self):
+        room = state.create_room('c1', 'Alice')
+        state.mark_disconnected(room, 'c1')
+        assert room.users['c1'].is_connected is False
+
+    def test_updates_last_seen(self):
+        room = state.create_room('c1', 'Alice')
+        old_last_seen = room.users['c1'].last_seen
+        state.mark_disconnected(room, 'c1')
+        assert room.users['c1'].last_seen >= old_last_seen
+
+    def test_unknown_user_noop(self):
+        room = state.create_room('c1', 'Alice')
+        state.mark_disconnected(room, 'nobody')  # should not raise
+
+
+class TestReconnectUser:
+    def test_reconnects_disconnected_user(self):
+        room = state.create_room('c1', 'Alice')
+        room.users['c1'].is_connected = False
+        user = state.reconnect_user(room, 'c1')
+        assert user is not None
+        assert user.is_connected is True
+
+    def test_increments_connect_epoch(self):
+        room = state.create_room('c1', 'Alice')
+        old_epoch = room.users['c1'].connect_epoch
+        state.reconnect_user(room, 'c1')
+        assert room.users['c1'].connect_epoch == old_epoch + 1
+
+    def test_updates_last_seen(self):
+        room = state.create_room('c1', 'Alice')
+        old_last_seen = room.users['c1'].last_seen
+        state.reconnect_user(room, 'c1')
+        assert room.users['c1'].last_seen >= old_last_seen
+
+    def test_unknown_user_returns_none(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.reconnect_user(room, 'nobody') is None
+
+    def test_idempotent_on_connected_user(self):
+        room = state.create_room('c1', 'Alice')
+        user = state.reconnect_user(room, 'c1')
+        assert user.is_connected is True
+
+
+class TestRemoveUser:
+    def test_removes_user(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.remove_user(room, 'c1')
+        assert 'c1' not in room.users
+        assert 'c2' in room.users
+
+    def test_remove_nonexistent_noop(self):
+        room = state.create_room('c1', 'Alice')
+        state.remove_user(room, 'nobody')  # should not raise
+
+
+class TestInheritModerator:
+    def test_assigns_to_oldest_participant(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.join_room(room, 'c3', 'Charlie')
+        # Remove the moderator
+        state.remove_user(room, 'c1')
+        new_mod = state.inherit_moderator(room)
+        assert new_mod is not None
+        assert new_mod.is_moderator is True
+        # Bob joined before Charlie, so Bob should be moderator
+        assert new_mod.name == 'Bob'
+
+    def test_empty_room_returns_none(self):
+        room = Room(room_code='EMPTY1')
+        assert state.inherit_moderator(room) is None
+
+    def test_skips_disconnected_users(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.join_room(room, 'c3', 'Charlie')
+        state.remove_user(room, 'c1')
+        room.users['c2'].is_connected = False
+        new_mod = state.inherit_moderator(room)
+        assert new_mod.name == 'Charlie'
+
+
+class TestProcessDisconnect:
+    def test_marks_disconnected_on_epoch_match(self):
+        room = state.create_room('c1', 'Alice')
+        epoch = room.users['c1'].connect_epoch
+        result = state.process_disconnect(room.room_code, 'c1', epoch)
+        assert result is True
+        assert room.users['c1'].is_connected is False
+
+    def test_rejects_on_epoch_mismatch(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.process_disconnect(room.room_code, 'c1', 999)
+        assert result is False
+        assert room.users['c1'].is_connected is True
+
+    def test_rejects_missing_room(self):
+        assert state.process_disconnect('NOROOM', 'c1', 0) is False
+
+    def test_rejects_missing_user(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.process_disconnect(room.room_code, 'nobody', 0) is False
+
+    def test_notifies_room(self):
+        room = state.create_room('c1', 'Alice')
+        calls = []
+        state.register_listener(room.room_code, lambda: calls.append(1))
+        epoch = room.users['c1'].connect_epoch
+        state.process_disconnect(room.room_code, 'c1', epoch)
+        assert calls == [1]
+
+
+class TestHandleDisconnectTimeout:
+    def test_removes_disconnected_user(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        room.users['c2'].is_connected = False
+        result = state.handle_disconnect_timeout(room.room_code, 'c2')
+        assert result is True
+        assert 'c2' not in room.users
+
+    def test_skips_connected_user(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.handle_disconnect_timeout(room.room_code, 'c1')
+        assert result is False
+        assert 'c1' in room.users
+
+    def test_skips_missing_room(self):
+        assert state.handle_disconnect_timeout('NOROOM', 'c1') is False
+
+    def test_skips_missing_user(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.handle_disconnect_timeout(room.room_code, 'nobody') is False
+
+    def test_destroys_empty_room(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        room.users['c1'].is_connected = False
+        state.handle_disconnect_timeout(code, 'c1')
+        assert state.get_room(code) is None
+
+    def test_inherits_moderator(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        room.users['c1'].is_connected = False
+        state.handle_disconnect_timeout(room.room_code, 'c1')
+        assert room.users['c2'].is_moderator is True
+
+    def test_does_not_inherit_if_not_moderator(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        room.users['c2'].is_connected = False
+        state.handle_disconnect_timeout(room.room_code, 'c2')
+        assert room.users['c1'].is_moderator is True
+        assert 'c2' not in room.users
+
+    def test_triggers_auto_reveal_after_removal(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '5')
+        # Bob hasn't voted and disconnects
+        room.users['c2'].is_connected = False
+        state.handle_disconnect_timeout(room.room_code, 'c2')
+        # Only Alice remains with a vote → auto-reveal triggers
+        assert room.is_revealed is True
+
+    def test_destroys_pending_vote(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c2', '8')
+        room.users['c2'].is_connected = False
+        state.handle_disconnect_timeout(room.room_code, 'c2')
+        # Bob's vote should be gone (user removed entirely)
+        assert 'c2' not in room.users
+
+    def test_notifies_room(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        room.users['c2'].is_connected = False
+        calls = []
+        state.register_listener(room.room_code, lambda: calls.append(1))
+        state.handle_disconnect_timeout(room.room_code, 'c2')
+        assert len(calls) == 1
+
+
+class TestJoinRoomConnectEpoch:
+    def test_reconnect_increments_epoch(self):
+        room = state.create_room('c1', 'Alice')
+        old_epoch = room.users['c1'].connect_epoch
+        room.users['c1'].is_connected = False
+        state.join_room(room, 'c1', 'Alice')
+        assert room.users['c1'].connect_epoch == old_epoch + 1
+
+    def test_new_user_starts_at_zero(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        assert room.users['c2'].connect_epoch == 0

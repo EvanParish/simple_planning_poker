@@ -121,5 +121,9 @@ AI Assistant: Execute this build sequentially. Do not move to the next phase unt
     * Implement an optional text area near the top of the page (above the user list) were the moderator can enter text about the current issue being discussed.
     * Ideally, if a link to a github issue is provided the display is shortened to the issue number that the users can click on to open the issue in their browser.
     * Place the "cards" above the user list.
-    * Update the Observer Mode toggle to look like a checkbox.
-
+    * Update the Observer Mode toggle to look like a checkbox and place it above the user list.
+    * Provide a count of each number chosen by the team when votes are revealed.
+* **Phase 7: Storage Cleanup & Dark Mode**
+    * Make sure that there's no remnants left behind on a new run of the system. We don't want artifacts hanging around if the app needs to be restarted.
+    * Create a dark mode theme for the app with a toggle button. 
+    * The theme toggle switches between sun, in dark mode, to moon, in light mode, indicating the switch.
