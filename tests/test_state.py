@@ -373,6 +373,159 @@ class TestCalculateAverage:
         assert state.calculate_average(room) == 21.0
 
 
+class TestVoteCounts:
+    def test_counts_votes(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.join_room(room, 'c3', 'Charlie')
+        state.submit_vote(room, 'c1', '5')
+        state.submit_vote(room, 'c2', '5')
+        state.submit_vote(room, 'c3', '8')
+        counts = state.vote_counts(room)
+        assert counts == [('5', 2), ('8', 1)]
+
+    def test_no_votes(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.vote_counts(room) == []
+
+    def test_includes_special_cards(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '?')
+        state.submit_vote(room, 'c2', '☕')
+        counts = state.vote_counts(room)
+        assert ('?', 1) in counts
+        assert ('☕', 1) in counts
+
+    def test_sorted_by_count_descending(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.join_room(room, 'c3', 'Charlie')
+        state.submit_vote(room, 'c1', '8')
+        state.submit_vote(room, 'c2', '5')
+        state.submit_vote(room, 'c3', '5')
+        counts = state.vote_counts(room)
+        assert counts[0] == ('5', 2)
+        assert counts[1] == ('8', 1)
+
+    def test_ties_sorted_by_card_order(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        state.submit_vote(room, 'c1', '8')
+        state.submit_vote(room, 'c2', '3')
+        counts = state.vote_counts(room)
+        # Both have count 1; '3' appears before '8' in CARDS order
+        assert counts == [('3', 1), ('8', 1)]
+
+
+class TestSetTopic:
+    def test_moderator_can_set_topic(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.set_topic(room, 'c1', 'Issue #42') is True
+        assert room.current_topic == 'Issue #42'
+
+    def test_non_moderator_cannot_set_topic(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        assert state.set_topic(room, 'c2', 'nope') is False
+        assert room.current_topic == ''
+
+    def test_unknown_user_cannot_set_topic(self):
+        room = state.create_room('c1', 'Alice')
+        assert state.set_topic(room, 'nobody', 'nope') is False
+
+    def test_topic_persists_across_rounds(self):
+        room = state.create_room('c1', 'Alice')
+        state.set_topic(room, 'c1', 'Sprint planning')
+        state.reset_round(room)
+        assert room.current_topic == 'Sprint planning'
+
+    def test_empty_topic(self):
+        room = state.create_room('c1', 'Alice')
+        state.set_topic(room, 'c1', 'something')
+        state.set_topic(room, 'c1', '')
+        assert room.current_topic == ''
+
+
+class TestFormatTopicHtml:
+    def test_plain_text(self):
+        assert state.format_topic_html('Hello world') == 'Hello world'
+
+    def test_escapes_html(self):
+        result = state.format_topic_html('<script>alert("xss")</script>')
+        assert '<script>' not in result
+        assert '&lt;script&gt;' in result
+
+    def test_github_issue_link(self):
+        text = 'Check https://github.com/owner/repo/issues/123'
+        result = state.format_topic_html(text)
+        assert '>repo#123</a>' in result
+        assert 'href="https://github.com/owner/repo/issues/123"' in result
+        assert 'target="_blank"' in result
+
+    def test_multiple_github_links(self):
+        text = 'See https://github.com/a/b/issues/1 and https://github.com/c/d/issues/2'
+        result = state.format_topic_html(text)
+        assert '>b#1</a>' in result
+        assert '>d#2</a>' in result
+
+    def test_non_github_url_is_clickable(self):
+        text = 'Visit https://example.com/issues/123'
+        result = state.format_topic_html(text)
+        assert 'href="https://example.com/issues/123"' in result
+        assert '>https://example.com/issues/123</a>' in result
+
+    def test_preserves_newlines(self):
+        text = 'Line 1\nLine 2'
+        result = state.format_topic_html(text)
+        assert '<br>' in result
+
+    def test_empty_text(self):
+        assert state.format_topic_html('') == ''
+
+    def test_https_and_http(self):
+        text = 'http://github.com/owner/repo/issues/456'
+        result = state.format_topic_html(text)
+        assert '>repo#456</a>' in result
+
+    def test_ghe_issue_link(self):
+        text = 'See https://va.ghe.com/team/project/issues/99'
+        result = state.format_topic_html(text)
+        assert '>project#99</a>' in result
+        assert 'href="https://va.ghe.com/team/project/issues/99"' in result
+
+    def test_mixed_github_and_plain_urls(self):
+        text = 'Issue https://github.com/o/r/issues/1 and docs https://docs.example.com'
+        result = state.format_topic_html(text)
+        assert '>r#1</a>' in result
+        assert 'href="https://docs.example.com"' in result
+
+    def test_github_board_view_link(self):
+        url = (
+            'https://va.ghe.com/orgs/software/projects/184/views/5'
+            '?pane=issue&itemId=381126&issue=software%7Cvanotify-team%7C1845'
+        )
+        result = state.format_topic_html(url)
+        assert '>vanotify-team#1845</a>' in result
+        assert 'target="_blank"' in result
+
+    def test_github_board_view_lowercase_encoding(self):
+        url = 'https://va.ghe.com/orgs/org/projects/1/views/2?issue=org%7crepo%7c42'
+        result = state.format_topic_html(url)
+        assert '>repo#42</a>' in result
+
+    def test_github_board_view_no_issue_param(self):
+        url = 'https://va.ghe.com/orgs/software/projects/184/views/5?pane=info'
+        result = state.format_topic_html(url)
+        # No issue param → rendered as plain clickable URL
+        assert f'>{url}</a>' in result
+
+    def test_github_com_board_view_link(self):
+        url = 'https://github.com/orgs/myorg/projects/10/views/1?pane=issue&issue=myorg%7Cmyrepo%7C77'
+        result = state.format_topic_html(url)
+        assert '>myrepo#77</a>' in result
+
+
 class TestRoomListeners:
     def test_register_and_notify(self):
         calls = []

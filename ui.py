@@ -2,9 +2,11 @@
 
 Components:
 - render_header: Room code display + copy link + moderator controls
+- render_topic_area: Editable topic for moderator, read-only for others
+- render_voting_cards: Card selection buttons
+- render_observer_toggle: Observer mode checkbox
 - render_user_list: Vertical list of participants with vote status
-- render_voting_bar: Card selection bar + observer toggle
-- render_average_banner: Displayed when votes are revealed
+- render_results_banner: Average + vote distribution when revealed
 """
 
 from collections.abc import Callable
@@ -12,7 +14,7 @@ from collections.abc import Callable
 from nicegui import ui
 
 from models import Room, User
-from state import CARDS
+from state import CARDS, format_topic_html
 
 
 def _vote_status(user: User, is_revealed: bool) -> tuple[str, str]:
@@ -47,6 +49,24 @@ def render_header(room: Room, is_moderator: bool, on_reveal: Callable, on_reset:
                     ui.button('Reset Round', icon='refresh', on_click=on_reset, color='secondary')
 
 
+def render_topic_area(room: Room, is_moderator: bool, on_set_topic: Callable, on_topic_blur: Callable) -> None:
+    if is_moderator:
+        textarea = (
+            ui.textarea(
+                label='Current Topic',
+                placeholder='Describe the issue being estimated...',
+                value=room.current_topic,
+                on_change=lambda e: on_set_topic(e.value),
+            )
+            .classes('w-full')
+            .props('outlined autogrow debounce=300 clearable')
+        )
+        textarea.on('blur', on_topic_blur)
+    elif room.current_topic:
+        with ui.card().classes('w-full p-3 bg-white shadow-sm'):
+            ui.html(format_topic_html(room.current_topic))
+
+
 def render_user_row(user: User, is_revealed: bool) -> None:
     label, color = _vote_status(user, is_revealed)
     with ui.row().classes('w-full items-center p-3 rounded-lg bg-white shadow-sm'):
@@ -63,17 +83,19 @@ def render_user_list(room: Room) -> None:
             render_user_row(user, room.is_revealed)
 
 
-def render_average_banner(average: float | None) -> None:
+def render_results_banner(average: float | None, counts: list[tuple[str, int]]) -> None:
     with ui.card().classes('w-full p-4 bg-blue-50'):
         if average is not None:
             ui.label(f'Average: {average:.1f}').classes('text-xl font-bold text-center w-full')
         else:
             ui.label('No numeric votes').classes('text-center text-gray-500 w-full')
+        if counts:
+            with ui.row().classes('w-full justify-center gap-3 mt-2'):
+                for card, count in counts:
+                    ui.badge(f'{card} × {count}', color='primary').props('outline')
 
 
-def render_voting_bar(
-    selected_card: str | None, is_observer: bool, is_revealed: bool, on_vote: Callable, on_toggle_observer: Callable
-) -> None:
+def render_voting_cards(selected_card: str | None, is_observer: bool, is_revealed: bool, on_vote: Callable) -> None:
     disabled = is_observer or is_revealed
     with ui.row().classes('w-full justify-center gap-1 flex-wrap'):
         for card in CARDS:
@@ -87,4 +109,6 @@ def render_voting_bar(
             if disabled:
                 btn.props('disable')
 
-    ui.switch('Observer Mode', value=is_observer, on_change=on_toggle_observer).classes('mt-2')
+
+def render_observer_toggle(is_observer: bool, on_toggle_observer: Callable) -> None:
+    ui.checkbox('Observer Mode', value=is_observer, on_change=on_toggle_observer)

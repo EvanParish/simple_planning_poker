@@ -44,6 +44,7 @@ class TestRoom:
         assert r.room_code == 'ABC123'
         assert r.users == {}
         assert r.is_revealed is False
+        assert r.current_topic == ''
 
     def test_active_users_filters_disconnected(self):
         r = Room(room_code='TEST01')

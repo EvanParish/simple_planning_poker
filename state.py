@@ -10,7 +10,9 @@ Maps room codes to Room objects. Contains functions for:
 - Moderator inheritance
 """
 
+import html
 import random
+import re
 import string
 from collections.abc import Callable
 from time import time
@@ -23,6 +25,11 @@ DISCONNECT_GRACE_SECONDS = 15
 
 CARDS = ['1', '2', '3', '5', '8', '13', '21', '?', '☕']
 NUMERIC_CARDS = {'1', '2', '3', '5', '8', '13', '21'}
+_GITHUB_HOSTS = r'(?:github\.com|va\.ghe\.com)'
+_GITHUB_ISSUE_RE = re.compile(rf'https?://{_GITHUB_HOSTS}/[^/\s]+/([^/\s]+)/issues/(\d+)')
+_GITHUB_BOARD_PREFIX_RE = re.compile(rf'https?://{_GITHUB_HOSTS}/orgs/[^/\s]+/projects/\d+/views/\d+')
+_GITHUB_BOARD_ISSUE_RE = re.compile(r'issue=([^%\s&;]+)%7C([^%\s&;]+)%7C(\d+)', re.IGNORECASE)
+_URL_RE = re.compile(r'https?://[^\s<>]+')
 
 rooms: dict[str, Room] = {}
 _room_listeners: dict[str, list[Callable]] = {}
@@ -158,6 +165,44 @@ def calculate_average(room: Room) -> float | None:
     if not numeric:
         return None
     return sum(numeric) / len(numeric)
+
+
+def vote_counts(room: Room) -> list[tuple[str, int]]:
+    """Count votes by card value. Returns [(card, count), ...] sorted by count desc, then card order."""
+    counts: dict[str, int] = {}
+    for user in room.users.values():
+        if user.vote is not None:
+            counts[user.vote] = counts.get(user.vote, 0) + 1
+    card_order = {c: i for i, c in enumerate(CARDS)}
+    return sorted(counts.items(), key=lambda x: (-x[1], card_order.get(x[0], 99)))
+
+
+def set_topic(room: Room, client_id: str, text: str) -> bool:
+    """Set the room's current discussion topic. Only moderators can do this."""
+    user = room.users.get(client_id)
+    if user is None or not user.is_moderator:
+        return False
+    room.current_topic = text
+    return True
+
+
+def format_topic_html(text: str) -> str:
+    """Convert topic text to safe HTML with clickable links. GitHub issue URLs are shortened."""
+    escaped = html.escape(text)
+
+    def _replace_url(match):
+        url = match.group(0)
+        issue_match = _GITHUB_ISSUE_RE.fullmatch(url)
+        if issue_match:
+            return f'<a href="{url}" target="_blank" class="text-blue-600 underline">{issue_match.group(1)}#{issue_match.group(2)}</a>'
+        if _GITHUB_BOARD_PREFIX_RE.match(url):
+            board_match = _GITHUB_BOARD_ISSUE_RE.search(url)
+            if board_match:
+                return f'<a href="{url}" target="_blank" class="text-blue-600 underline">{board_match.group(2)}#{board_match.group(3)}</a>'
+        return f'<a href="{url}" target="_blank" class="text-blue-600 underline">{url}</a>'
+
+    result = _URL_RE.sub(_replace_url, escaped)
+    return result.replace('\n', '<br>')
 
 
 # --- Room update listeners (for real-time sync) ---

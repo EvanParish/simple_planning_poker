@@ -9,7 +9,14 @@ load_dotenv()
 from nicegui import app, ui  # noqa: E402
 
 import state  # noqa: E402
-from ui import render_average_banner, render_header, render_user_list, render_voting_bar  # noqa: E402
+from ui import (  # noqa: E402
+    render_header,
+    render_observer_toggle,
+    render_results_banner,
+    render_topic_area,
+    render_user_list,
+    render_voting_cards,
+)
 
 
 def _get_or_create_client_id() -> str:
@@ -147,6 +154,19 @@ def _make_room_handlers(room, client_id):
     return on_vote, on_reveal, on_reset, on_toggle_observer
 
 
+def _make_topic_handlers(room, client_id):
+    """Create event handler callbacks for the topic text area."""
+    code = room.room_code
+
+    def on_set_topic(text: str):
+        state.set_topic(room, client_id, text)
+
+    def on_topic_blur():
+        state.notify_room(code)
+
+    return on_set_topic, on_topic_blur
+
+
 @ui.page('/room/{room_code}')
 def room_page(room_code: str):
     room = state.get_room(room_code)
@@ -163,6 +183,7 @@ def room_page(room_code: str):
     state.notify_room(room.room_code)
 
     on_vote, on_reveal, on_reset, on_toggle_observer = _make_room_handlers(room, client_id)
+    on_set_topic, on_topic_blur = _make_topic_handlers(room, client_id)
 
     ui.query('body').classes('bg-gray-100')
 
@@ -174,12 +195,14 @@ def room_page(room_code: str):
 
         with ui.column().classes('w-full max-w-2xl mx-auto p-4 gap-4'):
             render_header(room, user.is_moderator, on_reveal, on_reset)
-            render_user_list(room)
+            render_topic_area(room, user.is_moderator, on_set_topic, on_topic_blur)
+            render_voting_cards(user.vote, user.is_observer, room.is_revealed, on_vote)
 
             if room.is_revealed:
-                render_average_banner(state.calculate_average(room))
+                render_results_banner(state.calculate_average(room), state.vote_counts(room))
 
-            render_voting_bar(user.vote, user.is_observer, room.is_revealed, on_vote, on_toggle_observer)
+            render_observer_toggle(user.is_observer, on_toggle_observer)
+            render_user_list(room)
 
     room_content()
     _setup_room_listeners(room.room_code, room_content, client_id)
