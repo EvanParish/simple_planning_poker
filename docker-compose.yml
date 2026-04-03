@@ -1,5 +1,6 @@
 services:
   app:
     build: .
+    container_name: simple-planning-poker
     ports:
       - "5858:5858"
