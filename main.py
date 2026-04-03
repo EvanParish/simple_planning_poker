@@ -1,6 +1,8 @@
 import asyncio
 import os
+import shutil
 import uuid
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -13,9 +15,21 @@ from ui import (  # noqa: E402
     render_header,
     render_observer_toggle,
     render_results_banner,
+    render_theme_toggle,
     render_topic_area,
     render_user_list,
     render_voting_cards,
+)
+
+# Global styles for light/dark mode backgrounds
+ui.add_head_html(
+    """<style>
+body:not(.body--dark) { background-color: #f3f4f6 !important; }
+body.body--dark { background-color: #121212 !important; }
+.results-card { background-color: #eff6ff !important; }
+body.body--dark .results-card { background-color: #1e293b !important; }
+</style>""",
+    shared=True,
 )
 
 
@@ -70,7 +84,7 @@ async def _on_join_room(name_input: ui.input, room_code_input: ui.input):
 
 @ui.page('/')
 def landing_page(room: str = ''):
-    ui.query('body').classes('bg-gray-100')
+    render_theme_toggle()
 
     with ui.card().classes('absolute-center w-96 p-8'):
         ui.label('Planning Poker').classes('text-3xl font-bold text-center w-full mb-2')
@@ -185,7 +199,7 @@ def room_page(room_code: str):
     on_vote, on_reveal, on_reset, on_toggle_observer = _make_room_handlers(room, client_id)
     on_set_topic, on_topic_blur = _make_topic_handlers(room, client_id)
 
-    ui.query('body').classes('bg-gray-100')
+    render_theme_toggle()
 
     @ui.refreshable
     def room_content():
@@ -207,6 +221,11 @@ def room_page(room_code: str):
     room_content()
     _setup_room_listeners(room.room_code, room_content, client_id)
 
+
+# Clean stale storage from previous runs
+_nicegui_storage = Path('.nicegui')
+if _nicegui_storage.exists():
+    shutil.rmtree(_nicegui_storage)
 
 ui.run(
     title='Planning Poker',

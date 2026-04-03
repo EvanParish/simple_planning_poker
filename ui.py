@@ -1,6 +1,7 @@
 """Reusable NiceGUI UI components.
 
 Components:
+- render_theme_toggle: Dark/light mode toggle button
 - render_header: Room code display + copy link + moderator controls
 - render_topic_area: Editable topic for moderator, read-only for others
 - render_voting_cards: Card selection buttons
@@ -11,7 +12,7 @@ Components:
 
 from collections.abc import Callable
 
-from nicegui import ui
+from nicegui import app, ui
 
 from models import Room, User
 from state import CARDS, format_topic_html
@@ -28,6 +29,20 @@ def _vote_status(user: User, is_revealed: bool) -> tuple[str, str]:
     if is_revealed:
         return (user.vote, 'primary')
     return ('✓ Voted', 'green')
+
+
+def render_theme_toggle() -> None:
+    dark = ui.dark_mode(app.storage.user.get('dark_mode', False))
+    icon = 'light_mode' if dark.value else 'dark_mode'
+
+    def toggle():
+        dark.toggle()
+        app.storage.user['dark_mode'] = dark.value
+        btn._props['icon'] = 'light_mode' if dark.value else 'dark_mode'
+        btn.update()
+
+    with ui.element('div').classes('fixed top-4 right-4 z-50'):
+        btn = ui.button(icon=icon, on_click=toggle).props('flat round size=sm').tooltip('Toggle dark mode')
 
 
 def render_header(room: Room, is_moderator: bool, on_reveal: Callable, on_reset: Callable) -> None:
@@ -63,17 +78,18 @@ def render_topic_area(room: Room, is_moderator: bool, on_set_topic: Callable, on
         )
         textarea.on('blur', on_topic_blur)
     elif room.current_topic:
-        with ui.card().classes('w-full p-3 bg-white shadow-sm'):
+        with ui.card().classes('w-full p-3'):
             ui.html(format_topic_html(room.current_topic))
 
 
 def render_user_row(user: User, is_revealed: bool) -> None:
     label, color = _vote_status(user, is_revealed)
-    with ui.row().classes('w-full items-center p-3 rounded-lg bg-white shadow-sm'):
-        ui.label(user.name).classes('font-medium flex-1')
-        if user.is_moderator:
-            ui.badge('Mod', color='blue').props('outline')
-        ui.badge(label, color=color)
+    with ui.card().tight().classes('w-full'):
+        with ui.row().classes('w-full items-center p-3'):
+            ui.label(user.name).classes('font-medium flex-1')
+            if user.is_moderator:
+                ui.badge('Mod', color='blue').props('outline')
+            ui.badge(label, color=color)
 
 
 def render_user_list(room: Room) -> None:
@@ -84,7 +100,7 @@ def render_user_list(room: Room) -> None:
 
 
 def render_results_banner(average: float | None, counts: list[tuple[str, int]]) -> None:
-    with ui.card().classes('w-full p-4 bg-blue-50'):
+    with ui.card().classes('w-full p-4 results-card'):
         if average is not None:
             ui.label(f'Average: {average:.1f}').classes('text-xl font-bold text-center w-full')
         else:

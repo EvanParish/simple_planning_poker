@@ -177,29 +177,30 @@ def vote_counts(room: Room) -> list[tuple[str, int]]:
     return sorted(counts.items(), key=lambda x: (-x[1], card_order.get(x[0], 99)))
 
 
-def set_topic(room: Room, client_id: str, text: str) -> bool:
+def set_topic(room: Room, client_id: str, text: str | None) -> bool:
     """Set the room's current discussion topic. Only moderators can do this."""
     user = room.users.get(client_id)
     if user is None or not user.is_moderator:
         return False
-    room.current_topic = text
+    room.current_topic = text or ''
     return True
 
 
 def format_topic_html(text: str) -> str:
     """Convert topic text to safe HTML with clickable links. GitHub issue URLs are shortened."""
     escaped = html.escape(text)
+    link = '<a href="{url}" target="_blank" onclick="window.open(this.href);return false;" class="text-blue-600 underline">'
 
     def _replace_url(match):
         url = match.group(0)
         issue_match = _GITHUB_ISSUE_RE.fullmatch(url)
         if issue_match:
-            return f'<a href="{url}" target="_blank" class="text-blue-600 underline">{issue_match.group(1)}#{issue_match.group(2)}</a>'
+            return f'{link.format(url=url)}{issue_match.group(1)}#{issue_match.group(2)}</a>'
         if _GITHUB_BOARD_PREFIX_RE.match(url):
             board_match = _GITHUB_BOARD_ISSUE_RE.search(url)
             if board_match:
-                return f'<a href="{url}" target="_blank" class="text-blue-600 underline">{board_match.group(2)}#{board_match.group(3)}</a>'
-        return f'<a href="{url}" target="_blank" class="text-blue-600 underline">{url}</a>'
+                return f'{link.format(url=url)}{board_match.group(2)}#{board_match.group(3)}</a>'
+        return f'{link.format(url=url)}{url}</a>'
 
     result = _URL_RE.sub(_replace_url, escaped)
     return result.replace('\n', '<br>')

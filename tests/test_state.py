@@ -446,6 +446,12 @@ class TestSetTopic:
         state.set_topic(room, 'c1', '')
         assert room.current_topic == ''
 
+    def test_none_clears_topic(self):
+        room = state.create_room('c1', 'Alice')
+        state.set_topic(room, 'c1', 'something')
+        state.set_topic(room, 'c1', None)
+        assert room.current_topic == ''
+
 
 class TestFormatTopicHtml:
     def test_plain_text(self):
