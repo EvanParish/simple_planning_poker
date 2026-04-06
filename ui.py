@@ -48,6 +48,10 @@ def render_theme_toggle() -> None:
 def render_header(room: Room, is_moderator: bool, on_reveal: Callable, on_reset: Callable) -> None:
     with ui.row().classes('w-full items-center justify-between'):
         with ui.row().classes('items-center gap-2'):
+            ui.button(
+                icon='home',
+                on_click=lambda: ui.navigate.to('/'),
+            ).props('flat round size=sm').tooltip('Back to home')
             ui.label(f'Room {room.room_code}').classes('text-2xl font-bold')
             ui.button(
                 icon='content_copy',

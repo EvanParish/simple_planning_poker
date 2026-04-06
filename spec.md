@@ -22,6 +22,7 @@ Create a frictionless, web-based planning poker application that requires no use
 * **Available Cards:** Fibonacci sequence (1, 2, 3, 5, 8, 13, 21), plus `?` (Unsure) and `☕` (Break).
 * **Changing Votes:** Users can change their pending vote as many times as they want by selecting a different card, up until the cards are revealed. Once revealed, voting is locked.
 * **Average Calculation:** Displays the exact mathematical average of all submitted numeric votes. `?` and `☕` are excluded from the denominator and the calculation.
+* **Vote Distribution:** When cards are revealed, the UI displays a count of each card value chosen (e.g., `5 × 3`, `8 × 2`), sorted by frequency descending.
 * **Auto-Reveal:** The system constantly checks the number of submitted votes against the number of active, non-observer users. If `votes == (total_users - observers)`, the cards are automatically revealed.
 * **Late Joiners:** If a user joins the room *after* the cards have been revealed for the current ticket, they will see the read-only results of that finished round. They must wait for the Moderator to reset the round before they can participate.
 * **Name Collisions:** If a user attempts to join a room with a display name that is already actively in the room, the UI will block entry and prompt them to append an initial or choose a different name.
@@ -44,13 +45,19 @@ Create a frictionless, web-based planning poker application that requires no use
 * **Header / Top Bar:**
     * Displays the 6-digit Room Code with a quick "Copy Invite Link" icon.
     * Displays Moderator controls (if applicable): "Reveal Cards" and "Reset Round" buttons.
+    * A dark/light mode toggle button (sun icon in dark mode, moon icon in light mode) is fixed to the top-right corner. The user's theme preference is persisted in browser storage.
+* **Topic Area (below header):**
+    * An optional text area where the Moderator can describe the current issue being estimated. Only the Moderator can edit this field; Participants see a read-only view.
+    * GitHub issue URLs (including GitHub Enterprise and project board URLs) are automatically shortened to `repo#number` format and rendered as clickable links.
+* **Voting Cards (below topic):**
+    * A horizontally wrapped row of the voting cards (Fibonacci, `?`, `☕`). Placed above the user list for visibility.
+* **Results Banner (below cards, when revealed):**
+    * Displays the **Calculated Average** and the **Vote Distribution** (count per card value).
+* **Observer Toggle (below results):**
+    * An "Observer Mode" checkbox, placed above the user list.
 * **Main Content Area (The Table):**
-    * A clean, vertical list of all users currently in the room.
-    * Each row displays: User's Name, an "Observer" badge (if toggled), and their current status (e.g., "Thinking...", "Voted [Checkmark]", or the actual card value once revealed).
-    * When cards are revealed, a highlighted banner or card at the top/bottom of this list displays the **Calculated Average**.
-* **Footer / Bottom Sticky Bar:**
-    * A horizontally scrollable or neatly wrapped row of the voting cards (Fibonacci, `?`, `☕`).
-    * A persistent "Observer Mode" toggle switch.
+    * A clean, vertical list of all users currently in the room, sorted by join time.
+    * Each row displays: User's Name, a "Mod" badge (if moderator), and their current status (e.g., "Thinking...", "✓ Voted", "Reconnecting...", "Observer", or the actual card value once revealed).
 
 ---
 
@@ -69,7 +76,7 @@ Do not place all code in a single file. Adhere to the following modular structur
 * `ui.py` - Reusable NiceGUI UI components (e.g., `voting_card()`, `user_row()`, `moderator_controls()`).
 * `Dockerfile` - Container configuration.
 * `docker-compose.yml` - Orchestration file.
-* `requirements.txt` - Python dependencies (must include `nicegui`).
+* `pyproject.toml` - Project metadata and dependencies (managed via `uv`).
 
 ### **3. Explicit Data Models**
 Use Python `dataclasses` (or Pydantic) to strictly type the state. Recommended baseline:
@@ -83,11 +90,13 @@ Use Python `dataclasses` (or Pydantic) to strictly type the state. Recommended b
     * `is_connected` (bool): WebSocket status.
     * `last_seen` (float): Timestamp for managing the 15-second grace period.
     * `joined_at` (float): Timestamp to determine "oldest participant" for moderator inheritance.
+    * `connect_epoch` (int): Monotonically increasing counter used to invalidate stale disconnect timers after a reconnect.
 
 * **Room Model:**
     * `room_code` (str): 6-digit alphanumeric ID.
     * `users` (dict[str, User]): Mapping of `client_id` to `User` objects.
     * `is_revealed` (bool): Current phase of the voting round.
+    * `current_topic` (str): Moderator-editable text describing the issue under estimation.
 
 ### **4. Implementation Phases (For AI Prompting)**
 AI Assistant: Execute this build sequentially. Do not move to the next phase until the current phase is fully functional and verified by the user.
@@ -117,13 +126,12 @@ AI Assistant: Execute this build sequentially. Do not move to the next phase unt
     * The global page timeout on all pages should be extended from the default to 10 seconds to avoid premature 5xx errors.
     * Implement the visual "Reconnecting..." state.
     * Implement Moderator Inheritance (transferring moderator to the oldest `joined_at` participant if the moderator fully disconnects).
-* **Phase 6: Current Context & UI Cleanup**
-    * Place the "cards" above the user list.
-    * Update the Observer Mode toggle to look like a checkbox and place it above the user list.
-    * Provide a count of each number chosen by the team when votes are revealed.
-    * Add an optional text area near the top of the page (above the user list) were the moderator can enter text about the current issue being discussed. ONLY the moderator can modify the text in this text area.
-    * Ideally, if a link to a github issue is provided the display is shortened to the issue number that the users can click on to open the issue in their browser.
+* **Phase 6: Topic Area, Vote Counts & UI Cleanup**
+    * Place the voting cards above the user list.
+    * Update the Observer Mode toggle to a checkbox, placed above the user list.
+    * Display a count of each card value chosen when votes are revealed.
+    * Add an optional topic text area (above the user list) where the moderator can describe the current issue. Only the moderator can modify this field.
+    * GitHub issue URLs are automatically shortened to a clickable `repo#number` format (supports github.com, GitHub Enterprise, and project board URLs).
 * **Phase 7: Storage Cleanup & Dark Theme Toggle**
-    * Make sure that there's no remnants left behind on a new run of the system. We don't want artifacts hanging around if the app needs to be restarted.
-    * Create a dark mode theme for the app with a toggle button. 
-    * The theme toggle switches between sun, in dark mode, to moon, in light mode, indicating the switch.
+    * On startup, remove the `.nicegui` storage directory to ensure no stale artifacts from previous runs persist.
+    * Create a dark/light mode theme toggle with a sun/moon icon. The user's preference is persisted in browser storage.

@@ -183,9 +183,12 @@ def _make_topic_handlers(room, client_id):
 
 @ui.page('/room/{room_code}')
 def room_page(room_code: str):
+    render_theme_toggle()
     room = state.get_room(room_code)
     if room is None:
-        ui.label('Room not found.').classes('text-xl text-red-500 absolute-center')
+        with ui.card().classes('absolute-center p-8 text-center'):
+            ui.label('Room not found.').classes('text-xl text-red-500 mb-4')
+            ui.button('Go Home', icon='home', on_click=lambda: ui.navigate.to('/')).props('outline')
         return
 
     client_id = _get_or_create_client_id()
@@ -198,8 +201,6 @@ def room_page(room_code: str):
 
     on_vote, on_reveal, on_reset, on_toggle_observer = _make_room_handlers(room, client_id)
     on_set_topic, on_topic_blur = _make_topic_handlers(room, client_id)
-
-    render_theme_toggle()
 
     @ui.refreshable
     def room_content():

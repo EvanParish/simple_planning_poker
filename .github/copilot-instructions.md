@@ -56,6 +56,8 @@ Tests live in a `tests/` directory mirroring the source structure (e.g., `tests/
 
 When adding or changing application logic, always add or update corresponding tests in the same commit.
 
+When adding or changing user-facing features or behavior, update `spec.md` in the same commit to keep it in sync with the implementation.
+
 ## Git Permissions
 
 - **DO NOT COMMIT CHANGES WITHOUT EXPLICIT USER APPROVAL** - Always wait for the user to review and approve changes before committing. This ensures that all modifications align with user expectations and project requirements.
