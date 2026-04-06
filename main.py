@@ -229,8 +229,9 @@ if _nicegui_storage.exists():
     shutil.rmtree(_nicegui_storage)
 
 ui.run(
-    title='Planning Poker',
     port=5858,
+    title='Planning Poker',
+    favicon='img/favicon.png',
     reload=True,
     reconnect_timeout=10.0,
     storage_secret=os.environ.get('STORAGE_SECRET', os.urandom(24).hex()),
