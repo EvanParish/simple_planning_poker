@@ -24,6 +24,13 @@ Create a frictionless, web-based planning poker application that requires no use
 * **Average Calculation:** Displays the exact mathematical average of all submitted numeric votes. `?` and `☕` are excluded from the denominator and the calculation.
 * **Vote Distribution:** When cards are revealed, the UI displays a count of each card value chosen (e.g., `5 × 3`, `8 × 2`), sorted by frequency descending.
 * **Auto-Reveal:** The system constantly checks the number of submitted votes against the number of active, non-observer users. If `votes == (total_users - observers)`, the cards are automatically revealed.
+* **Timer:** The Moderator can start a countdown timer before or during voting. 
+    * **Presets & Custom:** Preset buttons (1m, 2m, 3m, 5m) and a custom input field (1–3600 seconds) are available.
+    * **Visibility:** All participants see a live countdown (mm:ss) synced to a server-side deadline.
+    * **Auto-Reveal on Expiry:** When the timer reaches zero, votes are automatically revealed.
+    * **Cancellation:** The Moderator can cancel a running timer at any time.
+    * **Interactions:** The timer stops automatically when Auto-Reveal fires (all votes in), when the Moderator manually reveals cards, or when the round is reset.
+    * **Sound:** A subtle ascending chime plays when the timer starts; a descending chime plays when it finishes. Sounds are generated via the Web Audio API (no audio files).
 * **Late Joiners:** If a user joins the room *after* the cards have been revealed for the current ticket, they will see the read-only results of that finished round. They must wait for the Moderator to reset the round before they can participate.
 * **Name Collisions:** If a user attempts to join a room with a display name that is already actively in the room, the UI will block entry and prompt them to append an initial or choose a different name.
 
@@ -51,6 +58,10 @@ Create a frictionless, web-based planning poker application that requires no use
     * GitHub issue URLs (including GitHub Enterprise and project board URLs) are automatically shortened to `repo#number` format and rendered as clickable links.
 * **Voting Cards (below topic):**
     * A horizontally wrapped row of the voting cards (Fibonacci, `?`, `☕`). Placed above the user list for visibility.
+* **Timer Controls (below topic, above cards):**
+    * **Moderator view (no timer running):** Preset duration buttons (1m, 2m, 3m, 5m), a custom seconds input, and a "Start" button.
+    * **All users (timer running):** A centered timer icon with a live mm:ss countdown. The Moderator also sees a cancel (×) button.
+    * **Hidden** when votes are already revealed.
 * **Results Banner (below cards, when revealed):**
     * Displays the **Calculated Average** and the **Vote Distribution** (count per card value).
 * **Observer Toggle (below results):**
@@ -97,6 +108,7 @@ Use Python `dataclasses` (or Pydantic) to strictly type the state. Recommended b
     * `users` (dict[str, User]): Mapping of `client_id` to `User` objects.
     * `is_revealed` (bool): Current phase of the voting round.
     * `current_topic` (str): Moderator-editable text describing the issue under estimation.
+    * `timer_end` (float | None): Unix timestamp when the active countdown timer expires. `None` when no timer is running.
 
 ### **4. Implementation Phases (For AI Prompting)**
 AI Assistant: Execute this build sequentially. Do not move to the next phase until the current phase is fully functional and verified by the user.

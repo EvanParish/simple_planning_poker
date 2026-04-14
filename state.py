@@ -6,10 +6,12 @@ Maps room codes to Room objects. Contains functions for:
 - Vote submission and reset
 - Average calculation (excluding ? and ☕)
 - Auto-reveal check
+- Timer management (start, cancel, expiry)
 - Disconnect grace period handling
 - Moderator inheritance
 """
 
+import asyncio
 import html
 import random
 import re
@@ -33,6 +35,7 @@ _URL_RE = re.compile(r'https?://[^\s<>]+')
 
 rooms: dict[str, Room] = {}
 _room_listeners: dict[str, list[Callable]] = {}
+_timer_tasks: dict[str, asyncio.Task] = {}
 
 
 # --- Room CRUD ---
@@ -97,11 +100,15 @@ def join_room(room: Room, client_id: str, name: str) -> User | None:
 def remove_room(room_code: str) -> None:
     rooms.pop(room_code.upper(), None)
     _room_listeners.pop(room_code.upper(), None)
+    cancel_timer_task(room_code.upper())
 
 
 def clear_all_rooms() -> None:
     rooms.clear()
     _room_listeners.clear()
+    for task in _timer_tasks.values():
+        task.cancel()
+    _timer_tasks.clear()
 
 
 # --- Voting logic ---
@@ -122,10 +129,12 @@ def submit_vote(room: Room, client_id: str, card: str) -> bool:
 
 def reveal_votes(room: Room) -> None:
     room.is_revealed = True
+    room.timer_end = None
 
 
 def reset_round(room: Room) -> None:
     room.is_revealed = False
+    room.timer_end = None
     for user in room.users.values():
         user.vote = None
 
@@ -155,6 +164,7 @@ def check_and_auto_reveal(room: Room) -> bool:
     """Auto-reveal if all eligible users have voted. Returns True if revealed."""
     if should_auto_reveal(room):
         reveal_votes(room)
+        cancel_timer_task(room.room_code)
         return True
     return False
 
@@ -204,6 +214,62 @@ def format_topic_html(text: str) -> str:
 
     result = _URL_RE.sub(_replace_url, escaped)
     return result.replace('\n', '<br>')
+
+
+# --- Timer logic ---
+
+TIMER_PRESETS = [60, 120, 180, 300]
+
+
+def start_timer(room: Room, client_id: str, duration_seconds: int) -> bool:
+    """Start a countdown timer. Only moderators can start timers."""
+    user = room.users.get(client_id)
+    if user is None or not user.is_moderator:
+        return False
+    if duration_seconds <= 0:
+        return False
+    if room.is_revealed:
+        return False
+    room.timer_end = time() + duration_seconds
+    return True
+
+
+def cancel_timer(room: Room, client_id: str) -> bool:
+    """Cancel a running timer. Only moderators can cancel."""
+    user = room.users.get(client_id)
+    if user is None or not user.is_moderator:
+        return False
+    if room.timer_end is None:
+        return False
+    room.timer_end = None
+    return True
+
+
+async def _timer_expiry_task(room_code: str, duration_seconds: float) -> None:
+    """Sleep until timer expires, then reveal votes and notify."""
+    await asyncio.sleep(duration_seconds)
+    room = get_room(room_code)
+    if room is None:
+        return
+    if room.timer_end is None:
+        return
+    reveal_votes(room)
+    notify_room(room_code)
+    _timer_tasks.pop(room_code, None)
+
+
+def schedule_timer_expiry(room_code: str, duration_seconds: float) -> None:
+    """Create an asyncio task that auto-reveals when the timer expires."""
+    cancel_timer_task(room_code)
+    task = asyncio.create_task(_timer_expiry_task(room_code, duration_seconds))
+    _timer_tasks[room_code] = task
+
+
+def cancel_timer_task(room_code: str) -> None:
+    """Cancel any pending timer expiry task for a room."""
+    task = _timer_tasks.pop(room_code, None)
+    if task is not None:
+        task.cancel()
 
 
 # --- Room update listeners (for real-time sync) ---

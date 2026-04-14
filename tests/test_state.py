@@ -193,6 +193,12 @@ class TestRevealVotes:
         state.reveal_votes(room)
         assert room.is_revealed is True
 
+    def test_reveal_clears_timer(self):
+        room = state.create_room('c1', 'Alice')
+        room.timer_end = 9999999999.0
+        state.reveal_votes(room)
+        assert room.timer_end is None
+
 
 class TestResetRound:
     def test_clears_votes_and_revealed(self):
@@ -206,6 +212,12 @@ class TestResetRound:
         assert room.is_revealed is False
         assert room.users['c1'].vote is None
         assert room.users['c2'].vote is None
+
+    def test_reset_clears_timer(self):
+        room = state.create_room('c1', 'Alice')
+        room.timer_end = 9999999999.0
+        state.reset_round(room)
+        assert room.timer_end is None
 
 
 class TestToggleObserver:
@@ -312,6 +324,28 @@ class TestCheckAndAutoReveal:
         state.toggle_observer(room, 'c2')
         assert state.check_and_auto_reveal(room) is True
         assert room.is_revealed is True
+
+    @pytest.mark.asyncio
+    async def test_auto_reveal_cancels_timer_task(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        state.start_timer(room, 'c1', 60)
+        state.schedule_timer_expiry(code, 60)
+        state.submit_vote(room, 'c1', '5')
+        assert state.check_and_auto_reveal(room) is True
+        assert code not in state._timer_tasks
+
+    @pytest.mark.asyncio
+    async def test_no_auto_reveal_preserves_timer_task(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        state.join_room(room, 'c2', 'Bob')
+        state.start_timer(room, 'c1', 60)
+        state.schedule_timer_expiry(code, 60)
+        state.submit_vote(room, 'c1', '5')
+        assert state.check_and_auto_reveal(room) is False
+        assert code in state._timer_tasks
+        state.cancel_timer_task(code)
 
 
 class TestLateJoiner:
@@ -774,3 +808,204 @@ class TestJoinRoomConnectEpoch:
         room = state.create_room('c1', 'Alice')
         state.join_room(room, 'c2', 'Bob')
         assert room.users['c2'].connect_epoch == 0
+
+
+class TestStartTimer:
+    def test_moderator_starts_timer(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.start_timer(room, 'c1', 60)
+        assert result is True
+        assert room.timer_end is not None
+        assert room.timer_end > 0
+
+    def test_non_moderator_cannot_start(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        result = state.start_timer(room, 'c2', 60)
+        assert result is False
+        assert room.timer_end is None
+
+    def test_unknown_user_cannot_start(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.start_timer(room, 'unknown', 60)
+        assert result is False
+
+    def test_zero_duration_rejected(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.start_timer(room, 'c1', 0)
+        assert result is False
+        assert room.timer_end is None
+
+    def test_negative_duration_rejected(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.start_timer(room, 'c1', -10)
+        assert result is False
+
+    def test_cannot_start_when_revealed(self):
+        room = state.create_room('c1', 'Alice')
+        room.is_revealed = True
+        result = state.start_timer(room, 'c1', 60)
+        assert result is False
+
+    def test_timer_end_is_in_future(self):
+        from time import time
+
+        room = state.create_room('c1', 'Alice')
+        before = time()
+        state.start_timer(room, 'c1', 120)
+        after = time()
+        assert before + 120 <= room.timer_end <= after + 120
+
+
+class TestCancelTimer:
+    def test_moderator_cancels_timer(self):
+        room = state.create_room('c1', 'Alice')
+        state.start_timer(room, 'c1', 60)
+        result = state.cancel_timer(room, 'c1')
+        assert result is True
+        assert room.timer_end is None
+
+    def test_non_moderator_cannot_cancel(self):
+        room = state.create_room('c1', 'Alice')
+        state.start_timer(room, 'c1', 60)
+        state.join_room(room, 'c2', 'Bob')
+        result = state.cancel_timer(room, 'c2')
+        assert result is False
+        assert room.timer_end is not None
+
+    def test_cancel_when_no_timer(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.cancel_timer(room, 'c1')
+        assert result is False
+
+    def test_unknown_user_cannot_cancel(self):
+        room = state.create_room('c1', 'Alice')
+        state.start_timer(room, 'c1', 60)
+        result = state.cancel_timer(room, 'unknown')
+        assert result is False
+
+
+class TestTimerTaskManagement:
+    def test_cancel_timer_task_no_task(self):
+        state.cancel_timer_task('NOROOM')
+
+    def test_cancel_timer_task_clears_dict(self):
+        import asyncio
+        import warnings
+
+        loop = asyncio.new_event_loop()
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)
+                coro = state._timer_expiry_task('TESTXX', 9999)
+                task = loop.create_task(coro)
+                state._timer_tasks['TESTXX'] = task
+                state.cancel_timer_task('TESTXX')
+                assert 'TESTXX' not in state._timer_tasks
+                assert task.cancelling()
+        finally:
+            loop.close()
+
+    def test_remove_room_cancels_timer_task(self):
+        import asyncio
+        import warnings
+
+        loop = asyncio.new_event_loop()
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)
+                room = state.create_room('c1', 'Alice')
+                code = room.room_code
+                coro = state._timer_expiry_task(code, 9999)
+                task = loop.create_task(coro)
+                state._timer_tasks[code] = task
+                state.remove_room(code)
+                assert code not in state._timer_tasks
+                assert task.cancelling()
+        finally:
+            loop.close()
+
+    def test_clear_all_rooms_cancels_timer_tasks(self):
+        import asyncio
+        import warnings
+
+        loop = asyncio.new_event_loop()
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)
+                coro = state._timer_expiry_task('ROOM01', 9999)
+                task = loop.create_task(coro)
+                state._timer_tasks['ROOM01'] = task
+                state.clear_all_rooms()
+                assert 'ROOM01' not in state._timer_tasks
+                assert task.cancelling()
+        finally:
+            loop.close()
+
+
+class TestTimerPresets:
+    def test_presets_are_positive(self):
+        assert all(p > 0 for p in state.TIMER_PRESETS)
+
+    def test_presets_values(self):
+        assert state.TIMER_PRESETS == [60, 120, 180, 300]
+
+
+class TestTimerExpiryTask:
+    @pytest.mark.asyncio
+    async def test_expiry_reveals_and_notifies(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        state.start_timer(room, 'c1', 1)
+        calls = []
+        state.register_listener(code, lambda: calls.append(1))
+        await state._timer_expiry_task(code, 0)
+        assert room.is_revealed is True
+        assert room.timer_end is None
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_expiry_noop_if_room_gone(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        state.remove_room(code)
+        await state._timer_expiry_task(code, 0)
+
+    @pytest.mark.asyncio
+    async def test_expiry_noop_if_timer_already_cancelled(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        # timer_end is None (no timer started)
+        await state._timer_expiry_task(code, 0)
+        assert room.is_revealed is False
+
+    @pytest.mark.asyncio
+    async def test_expiry_cleans_up_task_dict(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        state.start_timer(room, 'c1', 1)
+        state._timer_tasks[code] = 'placeholder'
+        await state._timer_expiry_task(code, 0)
+        assert code not in state._timer_tasks
+
+
+class TestScheduleTimerExpiry:
+    @pytest.mark.asyncio
+    async def test_schedule_creates_task(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        state.start_timer(room, 'c1', 60)
+        state.schedule_timer_expiry(code, 60)
+        assert code in state._timer_tasks
+        state.cancel_timer_task(code)
+
+    @pytest.mark.asyncio
+    async def test_schedule_cancels_existing_task(self):
+        room = state.create_room('c1', 'Alice')
+        code = room.room_code
+        state.start_timer(room, 'c1', 60)
+        state.schedule_timer_expiry(code, 9999)
+        old_task = state._timer_tasks[code]
+        state.schedule_timer_expiry(code, 9999)
+        assert old_task.cancelling()
+        state.cancel_timer_task(code)

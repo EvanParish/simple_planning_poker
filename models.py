@@ -23,6 +23,7 @@ class Room:
     users: dict[str, User] = field(default_factory=dict)
     is_revealed: bool = False
     current_topic: str = ''
+    timer_end: float | None = None
 
     def active_users(self) -> list[User]:
         return [u for u in self.users.values() if u.is_connected]

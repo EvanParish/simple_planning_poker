@@ -15,7 +15,7 @@ from collections.abc import Callable
 from nicegui import app, ui
 
 from models import Room, User
-from state import CARDS, format_topic_html
+from state import CARDS, TIMER_PRESETS, format_topic_html
 
 
 def _vote_status(user: User, is_revealed: bool) -> tuple[str, str]:
@@ -132,3 +132,114 @@ def render_voting_cards(selected_card: str | None, is_observer: bool, is_reveale
 
 def render_observer_toggle(is_observer: bool, on_toggle_observer: Callable) -> None:
     ui.checkbox('Observer Mode', value=is_observer, on_change=on_toggle_observer)
+
+
+# --- Web Audio API sound helpers ---
+
+_JS_PLAY_START_SOUND = """
+(() => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const gain = ctx.createGain();
+    gain.gain.value = 0.15;
+    gain.connect(ctx.destination);
+    const o1 = ctx.createOscillator();
+    o1.type = 'sine';
+    o1.frequency.value = 440;
+    o1.connect(gain);
+    o1.start(ctx.currentTime);
+    o1.stop(ctx.currentTime + 0.1);
+    const o2 = ctx.createOscillator();
+    o2.type = 'sine';
+    o2.frequency.value = 660;
+    o2.connect(gain);
+    o2.start(ctx.currentTime + 0.1);
+    o2.stop(ctx.currentTime + 0.2);
+})();
+"""
+
+_JS_PLAY_FINISH_SOUND = """
+(() => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const gain = ctx.createGain();
+    gain.gain.value = 0.15;
+    gain.connect(ctx.destination);
+    const freqs = [880, 660, 440];
+    freqs.forEach((f, i) => {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = f;
+        o.connect(gain);
+        o.start(ctx.currentTime + i * 0.15);
+        o.stop(ctx.currentTime + (i + 1) * 0.15);
+    });
+})();
+"""
+
+
+def _format_duration(seconds: int) -> str:
+    """Format seconds as a human-readable duration label."""
+    if seconds >= 60 and seconds % 60 == 0:
+        return f'{seconds // 60}m'
+    return f'{seconds}s'
+
+
+def _js_countdown_script(timer_end: float) -> str:
+    """Generate JavaScript for a live countdown display."""
+    return f"""
+    (() => {{
+        const timerEnd = {timer_end};
+        const el = document.getElementById('timer-countdown');
+        if (!el) return;
+        let finished = false;
+        function update() {{
+            const remaining = Math.max(0, Math.ceil(timerEnd - Date.now() / 1000));
+            const mins = Math.floor(remaining / 60);
+            const secs = remaining % 60;
+            el.textContent = mins + ':' + String(secs).padStart(2, '0');
+            if (remaining <= 0 && !finished) {{
+                finished = true;
+                {_JS_PLAY_FINISH_SOUND}
+            }}
+            if (remaining > 0) {{
+                setTimeout(update, 250);
+            }}
+        }}
+        update();
+    }})();
+    """
+
+
+def render_timer_controls(
+    room: Room,
+    is_moderator: bool,
+    on_start_timer: Callable,
+    on_cancel_timer: Callable,
+) -> None:
+    """Render timer controls for the moderator and countdown for all users."""
+    has_active_timer = room.timer_end is not None and not room.is_revealed
+
+    if has_active_timer:
+        with ui.row().classes('w-full items-center justify-center gap-3'):
+            ui.icon('timer', size='sm', color='primary')
+            ui.label().classes('text-xl font-mono font-bold').props('id=timer-countdown')
+            if is_moderator:
+                ui.button(icon='close', on_click=on_cancel_timer, color='negative').props('flat round size=sm').tooltip(
+                    'Cancel timer'
+                )
+        ui.run_javascript(_js_countdown_script(room.timer_end))
+    elif is_moderator and not room.is_revealed:
+        with ui.row().classes('w-full items-center justify-center gap-2 flex-wrap'):
+            for preset in TIMER_PRESETS:
+                ui.button(
+                    _format_duration(preset),
+                    icon='timer',
+                    on_click=lambda p=preset: on_start_timer(p),
+                ).props('outline size=sm')
+            custom_input = ui.number(label='Custom (s)', min=1, max=3600, step=1, value=90).props(
+                'dense outlined style="max-width: 120px"'
+            )
+            ui.button(
+                'Start',
+                icon='play_arrow',
+                on_click=lambda: on_start_timer(int(custom_input.value)) if custom_input.value else None,
+            ).props('size=sm color=primary')

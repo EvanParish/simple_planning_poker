@@ -12,10 +12,12 @@ from nicegui import app, ui  # noqa: E402
 
 import state  # noqa: E402
 from ui import (  # noqa: E402
+    _JS_PLAY_START_SOUND,
     render_header,
     render_observer_toggle,
     render_results_banner,
     render_theme_toggle,
+    render_timer_controls,
     render_topic_area,
     render_user_list,
     render_voting_cards,
@@ -154,10 +156,12 @@ def _make_room_handlers(room, client_id):
 
     def on_reveal():
         state.reveal_votes(room)
+        state.cancel_timer_task(code)
         state.notify_room(code)
 
     def on_reset():
         state.reset_round(room)
+        state.cancel_timer_task(code)
         state.notify_room(code)
 
     def on_toggle_observer():
@@ -166,6 +170,24 @@ def _make_room_handlers(room, client_id):
         state.notify_room(code)
 
     return on_vote, on_reveal, on_reset, on_toggle_observer
+
+
+def _make_timer_handlers(room, client_id):
+    """Create event handler callbacks for timer controls."""
+    code = room.room_code
+
+    def on_start_timer(duration: int):
+        if state.start_timer(room, client_id, duration):
+            state.schedule_timer_expiry(code, duration)
+            ui.run_javascript(_JS_PLAY_START_SOUND)
+            state.notify_room(code)
+
+    def on_cancel_timer():
+        if state.cancel_timer(room, client_id):
+            state.cancel_timer_task(code)
+            state.notify_room(code)
+
+    return on_start_timer, on_cancel_timer
 
 
 def _make_topic_handlers(room, client_id):
@@ -200,6 +222,7 @@ def room_page(room_code: str):
     state.notify_room(room.room_code)
 
     on_vote, on_reveal, on_reset, on_toggle_observer = _make_room_handlers(room, client_id)
+    on_start_timer, on_cancel_timer = _make_timer_handlers(room, client_id)
     on_set_topic, on_topic_blur = _make_topic_handlers(room, client_id)
 
     @ui.refreshable
@@ -211,6 +234,7 @@ def room_page(room_code: str):
         with ui.column().classes('w-full max-w-2xl mx-auto p-4 gap-4'):
             render_header(room, user.is_moderator, on_reveal, on_reset)
             render_topic_area(room, user.is_moderator, on_set_topic, on_topic_blur)
+            render_timer_controls(room, user.is_moderator, on_start_timer, on_cancel_timer)
             render_voting_cards(user.vote, user.is_observer, room.is_revealed, on_vote)
 
             if room.is_revealed:
