@@ -188,10 +188,12 @@ def _js_countdown_script(timer_end: float) -> str:
     return f"""
     (() => {{
         const timerEnd = {timer_end};
+        window._pokerTimerEnd = timerEnd;
         const el = document.getElementById('timer-countdown');
         if (!el) return;
         let finished = false;
         function update() {{
+            if (window._pokerTimerEnd !== timerEnd) return;
             const remaining = Math.max(0, Math.ceil(timerEnd - Date.now() / 1000));
             const mins = Math.floor(remaining / 60);
             const secs = remaining % 60;
@@ -227,19 +229,21 @@ def render_timer_controls(
                     'Cancel timer'
                 )
         ui.run_javascript(_js_countdown_script(room.timer_end))
-    elif is_moderator and not room.is_revealed:
-        with ui.row().classes('w-full items-center justify-center gap-2 flex-wrap'):
-            for preset in TIMER_PRESETS:
+    else:
+        ui.run_javascript('window._pokerTimerEnd = null;')
+        if is_moderator and not room.is_revealed:
+            with ui.row().classes('w-full items-center justify-center gap-2 flex-wrap'):
+                for preset in TIMER_PRESETS:
+                    ui.button(
+                        _format_duration(preset),
+                        icon='timer',
+                        on_click=lambda p=preset: on_start_timer(p),
+                    ).props('outline size=sm')
+                custom_input = ui.number(label='Custom (s)', min=1, max=3600, step=1, value=90).props(
+                    'dense outlined style="max-width: 120px"'
+                )
                 ui.button(
-                    _format_duration(preset),
-                    icon='timer',
-                    on_click=lambda p=preset: on_start_timer(p),
-                ).props('outline size=sm')
-            custom_input = ui.number(label='Custom (s)', min=1, max=3600, step=1, value=90).props(
-                'dense outlined style="max-width: 120px"'
-            )
-            ui.button(
-                'Start',
-                icon='play_arrow',
-                on_click=lambda: on_start_timer(int(custom_input.value)) if custom_input.value else None,
-            ).props('size=sm color=primary')
+                    'Start',
+                    icon='play_arrow',
+                    on_click=lambda: on_start_timer(int(custom_input.value)) if custom_input.value else None,
+                ).props('size=sm color=primary')
