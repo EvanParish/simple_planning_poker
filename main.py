@@ -106,7 +106,9 @@ def landing_page(room: str = ''):
         ).classes('w-full')
 
         with ui.row().classes('w-full mt-4 gap-2'):
-            ui.button('Create Room', on_click=lambda: _on_create_room(name_input), color='primary').classes('flex-1')
+            ui.button('Create Room', on_click=lambda: _on_create_room(name_input), color='primary').classes(
+                'flex-1'
+            ).bind_visibility_from(room_code_input, 'value', backward=lambda v: not v or not v.strip())
             ui.button(
                 'Join Room', on_click=lambda: _on_join_room(name_input, room_code_input), color='secondary'
             ).classes('flex-1')

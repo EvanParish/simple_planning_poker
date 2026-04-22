@@ -41,7 +41,7 @@ Create a frictionless, web-based planning poker application that requires no use
 
 ### **6. Core User Flows**
 1.  **Creating a Room:** User arrives at the homepage, enters their display name, and clicks "Create Room." They are assigned Moderator status and routed to a room with a randomly generated 6-digit alphanumeric code.
-2.  **Joining a Room:** User arrives at the homepage, enters their display name and the 6-digit code (or clicks a direct share link which pre-fills the code), and joins the room.
+2.  **Joining a Room:** User arrives at the homepage, enters their display name and the 6-digit code (or clicks a direct share link which pre-fills the code), and joins the room. When the Room Code field contains a value (either pre-filled via link or typed manually), the "Create Room" button is hidden so the user is guided toward joining the existing room.
 3.  **Voting Loop:** * Moderator announces the ticket.
     * Participants click a card. UI indicates a "check mark" or "card face down" next to their name to show they have voted.
     * Cards are revealed (either via Auto-Reveal or the Moderator clicking "Reveal Cards").
