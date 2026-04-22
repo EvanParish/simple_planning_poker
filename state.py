@@ -23,7 +23,7 @@ from models import Room, User
 
 ROOM_CODE_LENGTH = 6
 ROOM_CODE_CHARS = string.ascii_uppercase + string.digits
-DISCONNECT_GRACE_SECONDS = 15
+DISCONNECT_GRACE_SECONDS = 30
 
 CARDS = ['1', '2', '3', '5', '8', '13', '21', '?', '☕']
 NUMERIC_CARDS = {'1', '2', '3', '5', '8', '13', '21'}
