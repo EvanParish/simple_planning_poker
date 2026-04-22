@@ -90,10 +90,10 @@ def render_user_row(user: User, is_revealed: bool) -> None:
     label, color = _vote_status(user, is_revealed)
     with ui.card().tight().classes('w-full'):
         with ui.row().classes('w-full items-center p-3'):
-            ui.label(user.name).classes('font-medium flex-1')
+            ui.label(user.name).classes('text-base font-medium flex-1')
             if user.is_moderator:
                 ui.badge('Mod', color='blue').props('outline')
-            ui.badge(label, color=color)
+            ui.badge(label, color=color).classes('text-base px-3 py-1')
 
 
 def render_user_list(room: Room) -> None:
@@ -112,7 +112,7 @@ def render_results_banner(average: float | None, counts: list[tuple[str, int]]) 
         if counts:
             with ui.row().classes('w-full justify-center gap-3 mt-2'):
                 for card, count in counts:
-                    ui.badge(f'{card} × {count}', color='primary').props('outline')
+                    ui.badge(f'{card} × {count}', color='primary').props('outline').classes('text-base px-3 py-1')
 
 
 def render_voting_cards(selected_card: str | None, is_observer: bool, is_revealed: bool, on_vote: Callable) -> None:
@@ -238,7 +238,7 @@ def render_timer_controls(
                         _format_duration(preset),
                         icon='timer',
                         on_click=lambda p=preset: on_start_timer(p),
-                    ).props('outline size=sm')
+                    ).props('outline').classes('text-base')
                 custom_input = ui.number(label='Custom (s)', min=1, max=3600, step=1, value=90).props(
                     'dense outlined style="max-width: 120px"'
                 )
@@ -246,4 +246,4 @@ def render_timer_controls(
                     'Start',
                     icon='play_arrow',
                     on_click=lambda: on_start_timer(int(custom_input.value)) if custom_input.value else None,
-                ).props('size=sm color=primary')
+                ).props('color=primary').classes('text-base')
