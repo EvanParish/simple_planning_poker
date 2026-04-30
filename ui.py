@@ -86,21 +86,36 @@ def render_topic_area(room: Room, is_moderator: bool, on_set_topic: Callable, on
             ui.html(format_topic_html(room.current_topic))
 
 
-def render_user_row(user: User, is_revealed: bool) -> None:
+def render_user_row(
+    user: User, is_revealed: bool, *, is_viewer_moderator: bool = False, on_transfer_moderator: Callable | None = None
+) -> None:
     label, color = _vote_status(user, is_revealed)
     with ui.card().tight().classes('w-full'):
         with ui.row().classes('w-full items-center p-3'):
             ui.label(user.name).classes('text-base font-medium flex-1')
             if user.is_moderator:
                 ui.badge('Mod', color='blue').props('outline')
+            elif is_viewer_moderator and user.is_connected and on_transfer_moderator:
+                ui.button(
+                    'Make Mod',
+                    icon='swap_horiz',
+                    on_click=lambda cid=user.client_id: on_transfer_moderator(cid),
+                ).props('flat dense size=sm color=blue-grey')
             ui.badge(label, color=color).classes('text-base px-3 py-1')
 
 
-def render_user_list(room: Room) -> None:
+def render_user_list(
+    room: Room, *, is_viewer_moderator: bool = False, on_transfer_moderator: Callable | None = None
+) -> None:
     sorted_users = sorted(room.users.values(), key=lambda u: u.joined_at)
     with ui.column().classes('w-full gap-2'):
         for user in sorted_users:
-            render_user_row(user, room.is_revealed)
+            render_user_row(
+                user,
+                room.is_revealed,
+                is_viewer_moderator=is_viewer_moderator,
+                on_transfer_moderator=on_transfer_moderator,
+            )
 
 
 def render_results_banner(average: float | None, counts: list[tuple[str, int]]) -> None:

@@ -12,7 +12,7 @@ Create a frictionless, web-based planning poker application that requires no use
 
 ### **3. User Roles & Permissions**
 * **Moderator:** The user who creates the room.
-    * *Permissions:* Can vote, toggle Observer status, trigger "Reveal Cards" (manual override), and trigger "Reset Round."
+    * *Permissions:* Can vote, toggle Observer status, trigger "Reveal Cards" (manual override), trigger "Reset Round," and transfer the Moderator role to another connected participant.
 * **Participant:** Any user who joins via the room URL/Code. 
     * *Permissions:* Can vote, and can toggle their own "Observer" status.
 * **Observer:** A Participant or Moderator who has toggled on the "Observer" status. 

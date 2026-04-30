@@ -693,6 +693,48 @@ class TestInheritModerator:
         assert new_mod.name == 'Charlie'
 
 
+class TestTransferModerator:
+    def test_successful_transfer(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        result = state.transfer_moderator(room, 'c1', 'c2')
+        assert result is True
+        assert room.users['c1'].is_moderator is False
+        assert room.users['c2'].is_moderator is True
+
+    def test_fails_if_caller_not_moderator(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        result = state.transfer_moderator(room, 'c2', 'c1')
+        assert result is False
+        assert room.users['c1'].is_moderator is True
+
+    def test_fails_if_target_does_not_exist(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.transfer_moderator(room, 'c1', 'nonexistent')
+        assert result is False
+        assert room.users['c1'].is_moderator is True
+
+    def test_fails_if_target_disconnected(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        room.users['c2'].is_connected = False
+        result = state.transfer_moderator(room, 'c1', 'c2')
+        assert result is False
+        assert room.users['c1'].is_moderator is True
+
+    def test_fails_if_transfer_to_self(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.transfer_moderator(room, 'c1', 'c1')
+        assert result is False
+        assert room.users['c1'].is_moderator is True
+
+    def test_fails_if_caller_does_not_exist(self):
+        room = state.create_room('c1', 'Alice')
+        result = state.transfer_moderator(room, 'ghost', 'c1')
+        assert result is False
+
+
 class TestProcessDisconnect:
     def test_marks_disconnected_on_epoch_match(self):
         room = state.create_room('c1', 'Alice')

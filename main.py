@@ -174,6 +174,17 @@ def _make_room_handlers(room, client_id):
     return on_vote, on_reveal, on_reset, on_toggle_observer
 
 
+def _make_transfer_handler(room, client_id):
+    """Create the moderator transfer callback."""
+    code = room.room_code
+
+    def on_transfer_moderator(target_client_id: str):
+        if state.transfer_moderator(room, client_id, target_client_id):
+            state.notify_room(code)
+
+    return on_transfer_moderator
+
+
 def _make_timer_handlers(room, client_id):
     """Create event handler callbacks for timer controls."""
     code = room.room_code
@@ -224,6 +235,7 @@ def room_page(room_code: str):
     state.notify_room(room.room_code)
 
     on_vote, on_reveal, on_reset, on_toggle_observer = _make_room_handlers(room, client_id)
+    on_transfer_moderator = _make_transfer_handler(room, client_id)
     on_start_timer, on_cancel_timer = _make_timer_handlers(room, client_id)
     on_set_topic, on_topic_blur = _make_topic_handlers(room, client_id)
 
@@ -243,7 +255,7 @@ def room_page(room_code: str):
                 render_results_banner(state.calculate_average(room), state.vote_counts(room))
 
             render_observer_toggle(user.is_observer, on_toggle_observer)
-            render_user_list(room)
+            render_user_list(room, is_viewer_moderator=user.is_moderator, on_transfer_moderator=on_transfer_moderator)
 
     room_content()
     _setup_room_listeners(room.room_code, room_content, client_id)

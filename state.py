@@ -321,6 +321,21 @@ def remove_user(room: Room, client_id: str) -> None:
     room.users.pop(client_id, None)
 
 
+def transfer_moderator(room: Room, from_client_id: str, to_client_id: str) -> bool:
+    """Voluntarily transfer moderator role to another connected user. Returns True on success."""
+    from_user = room.users.get(from_client_id)
+    if from_user is None or not from_user.is_moderator:
+        return False
+    if from_client_id == to_client_id:
+        return False
+    to_user = room.users.get(to_client_id)
+    if to_user is None or not to_user.is_connected:
+        return False
+    from_user.is_moderator = False
+    to_user.is_moderator = True
+    return True
+
+
 def inherit_moderator(room: Room) -> User | None:
     """Transfer moderator to the oldest connected participant. Returns new mod or None."""
     candidates = sorted(room.active_users(), key=lambda u: u.joined_at)
