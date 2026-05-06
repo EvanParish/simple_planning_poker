@@ -14,7 +14,7 @@ from collections.abc import Callable
 
 from nicegui import app, ui
 
-from models import Room, User
+from models import DepartedVote, Room, User
 from state import CARDS, TIMER_PRESETS, format_topic_html
 
 
@@ -104,6 +104,18 @@ def render_user_row(
             ui.badge(label, color=color).classes('text-base px-3 py-1')
 
 
+def _render_departed_vote_row(dv: DepartedVote, is_revealed: bool) -> None:
+    """Render a greyed-out row for a user who departed but had a vote."""
+    with ui.card().tight().classes('w-full opacity-50'):
+        with ui.row().classes('w-full items-center p-3'):
+            ui.label(dv.name).classes('text-base font-medium flex-1 text-gray-400')
+            ui.badge('Left', color='grey').props('outline')
+            if is_revealed:
+                ui.badge(dv.vote, color='primary').classes('text-base px-3 py-1')
+            else:
+                ui.badge('✓ Voted', color='green').classes('text-base px-3 py-1')
+
+
 def render_user_list(
     room: Room, *, is_viewer_moderator: bool = False, on_transfer_moderator: Callable | None = None
 ) -> None:
@@ -116,6 +128,8 @@ def render_user_list(
                 is_viewer_moderator=is_viewer_moderator,
                 on_transfer_moderator=on_transfer_moderator,
             )
+        for dv in room.departed_votes:
+            _render_departed_vote_row(dv, room.is_revealed)
 
 
 def render_results_banner(average: float | None, counts: list[tuple[str, int]]) -> None:

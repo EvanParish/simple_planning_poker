@@ -19,11 +19,11 @@ import string
 from collections.abc import Callable
 from time import time
 
-from models import Room, User
+from models import DepartedVote, Room, User
 
 ROOM_CODE_LENGTH = 6
 ROOM_CODE_CHARS = string.ascii_uppercase + string.digits
-DISCONNECT_GRACE_SECONDS = 30
+DISCONNECT_GRACE_SECONDS = 90
 
 CARDS = ['1', '2', '3', '5', '8', '13', '21', '?', '☕']
 NUMERIC_CARDS = {'1', '2', '3', '5', '8', '13', '21'}
@@ -135,6 +135,7 @@ def reveal_votes(room: Room) -> None:
 def reset_round(room: Room) -> None:
     room.is_revealed = False
     room.timer_end = None
+    room.departed_votes.clear()
     for user in room.users.values():
         user.vote = None
 
@@ -170,19 +171,22 @@ def check_and_auto_reveal(room: Room) -> bool:
 
 
 def calculate_average(room: Room) -> float | None:
-    """Calculate average of numeric votes. Returns None if no numeric votes."""
+    """Calculate average of numeric votes, including departed votes. Returns None if no numeric votes."""
     numeric = [int(u.vote) for u in room.users.values() if u.vote in NUMERIC_CARDS]
+    numeric.extend(int(dv.vote) for dv in room.departed_votes if dv.vote in NUMERIC_CARDS)
     if not numeric:
         return None
     return sum(numeric) / len(numeric)
 
 
 def vote_counts(room: Room) -> list[tuple[str, int]]:
-    """Count votes by card value. Returns [(card, count), ...] sorted by count desc, then card order."""
+    """Count votes by card value, including departed votes. Returns [(card, count), ...] sorted by count desc."""
     counts: dict[str, int] = {}
     for user in room.users.values():
         if user.vote is not None:
             counts[user.vote] = counts.get(user.vote, 0) + 1
+    for dv in room.departed_votes:
+        counts[dv.vote] = counts.get(dv.vote, 0) + 1
     card_order = {c: i for i, c in enumerate(CARDS)}
     return sorted(counts.items(), key=lambda x: (-x[1], card_order.get(x[0], 99)))
 
@@ -360,6 +364,12 @@ def process_disconnect(room_code: str, client_id: str, connect_epoch: int) -> bo
     return True
 
 
+def _preserve_departed_vote(room: Room, user: User) -> None:
+    """Save a departing user's vote for the current round."""
+    if user.vote is not None:
+        room.departed_votes.append(DepartedVote(name=user.name, vote=user.vote))
+
+
 def handle_disconnect_timeout(room_code: str, client_id: str) -> bool:
     """Handle the end of a disconnect grace period. Returns True if user was removed."""
     room = get_room(room_code)
@@ -370,6 +380,7 @@ def handle_disconnect_timeout(room_code: str, client_id: str) -> bool:
         return False
     if user.is_connected:
         return False
+    _preserve_departed_vote(room, user)
     was_moderator = user.is_moderator
     remove_user(room, client_id)
     if not room.users:

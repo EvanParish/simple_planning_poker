@@ -2,7 +2,7 @@
 
 from time import time
 
-from models import Room, User
+from models import DepartedVote, Room, User
 
 
 class TestUser:
@@ -46,6 +46,7 @@ class TestRoom:
         assert r.is_revealed is False
         assert r.current_topic == ''
         assert r.timer_end is None
+        assert r.departed_votes == []
 
     def test_active_users_filters_disconnected(self):
         r = Room(room_code='TEST01')
@@ -69,3 +70,17 @@ class TestRoom:
         r = Room(room_code='EMPTY1')
         assert r.active_users() == []
         assert r.active_name_set() == set()
+
+
+class TestDepartedVote:
+    def test_fields(self):
+        dv = DepartedVote(name='Alice', vote='5')
+        assert dv.name == 'Alice'
+        assert dv.vote == '5'
+
+    def test_departed_votes_on_room(self):
+        r = Room(room_code='TEST03')
+        r.departed_votes.append(DepartedVote(name='Bob', vote='8'))
+        assert len(r.departed_votes) == 1
+        assert r.departed_votes[0].name == 'Bob'
+        assert r.departed_votes[0].vote == '8'

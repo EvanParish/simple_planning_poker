@@ -37,7 +37,8 @@ Create a frictionless, web-based planning poker application that requires no use
 ### **5. Connection & State Resilience**
 * **Silent Reconnection:** Upon joining, users are assigned a lightweight local storage token (or session cookie). If they refresh or briefly lose connection, this token silently authenticates them back into their active persona without requiring them to re-enter their name.
 * **Disconnect Grace Period:** If a WebSocket disconnects, the user is visually flagged as "Reconnecting..." to the rest of the room. 
-* **State Updates:** Auto-Reveal and Moderator Inheritance are paused for this specific user's status during a 30-second grace period. If the user does not reconnect within 30 seconds, they are removed from the room, their pending vote is destroyed, and Moderator status is passed to the oldest remaining Participant if necessary.
+* **State Updates:** Auto-Reveal and Moderator Inheritance are paused for this specific user's status during a 90-second grace period. If the user does not reconnect within 90 seconds, they are removed from the room and Moderator status is passed to the oldest remaining Participant if necessary.
+* **Departed Vote Preservation:** When a disconnected user is removed from the room, any vote they cast in the current round is preserved. Departed users' votes still count toward the average and vote distribution. They appear in the user list as greyed-out entries. Departed votes are cleared when the Moderator resets the round.
 
 ### **6. Core User Flows**
 1.  **Creating a Room:** User arrives at the homepage, enters their display name, and clicks "Create Room." They are assigned Moderator status and routed to a room with a randomly generated 6-digit alphanumeric code.
@@ -134,7 +135,7 @@ AI Assistant: Execute this build sequentially. Do not move to the next phase unt
     * Implement the mathematical average calculation (ignoring `?` and `☕`).
     * Implement the Late Joiner logic (read-only state if joined while `is_revealed == True`).
 * **Phase 5: Connection Resilience**
-    * Implement the 30-second disconnect grace period.
+    * Implement the 90-second disconnect grace period.
     * The global page timeout on all pages should be extended from the default to 10 seconds to avoid premature 5xx errors.
     * Implement the visual "Reconnecting..." state.
     * Implement Moderator Inheritance (transferring moderator to the oldest `joined_at` participant if the moderator fully disconnects).

@@ -271,7 +271,7 @@ ui.run(
     title='Planning Poker',
     favicon='img/favicon.png',
     reload=True,
-    reconnect_timeout=30.0,
+    reconnect_timeout=90.0,
     storage_secret=os.environ.get('STORAGE_SECRET', os.urandom(24).hex()),
     show=False,
 )

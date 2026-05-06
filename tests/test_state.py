@@ -5,7 +5,7 @@ import string
 import pytest
 
 import state
-from models import Room
+from models import DepartedVote, Room
 
 
 @pytest.fixture(autouse=True)
@@ -219,6 +219,12 @@ class TestResetRound:
         state.reset_round(room)
         assert room.timer_end is None
 
+    def test_reset_clears_departed_votes(self):
+        room = state.create_room('c1', 'Alice')
+        room.departed_votes.append(DepartedVote(name='Bob', vote='5'))
+        state.reset_round(room)
+        assert room.departed_votes == []
+
 
 class TestToggleObserver:
     def test_toggle_on_clears_vote(self):
@@ -406,6 +412,29 @@ class TestCalculateAverage:
         state.submit_vote(room, 'c1', '21')
         assert state.calculate_average(room) == 21.0
 
+    def test_includes_departed_numeric_votes(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        room.departed_votes.append(DepartedVote(name='Bob', vote='8'))
+        assert state.calculate_average(room) == 6.5
+
+    def test_excludes_departed_special_votes(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        room.departed_votes.append(DepartedVote(name='Bob', vote='?'))
+        assert state.calculate_average(room) == 5.0
+
+    def test_only_departed_votes(self):
+        room = Room(room_code='TEST01')
+        room.departed_votes.append(DepartedVote(name='Alice', vote='3'))
+        room.departed_votes.append(DepartedVote(name='Bob', vote='13'))
+        assert state.calculate_average(room) == 8.0
+
+    def test_only_departed_special_votes_returns_none(self):
+        room = Room(room_code='TEST01')
+        room.departed_votes.append(DepartedVote(name='Alice', vote='☕'))
+        assert state.calculate_average(room) is None
+
 
 class TestVoteCounts:
     def test_counts_votes(self):
@@ -450,6 +479,21 @@ class TestVoteCounts:
         counts = state.vote_counts(room)
         # Both have count 1; '3' appears before '8' in CARDS order
         assert counts == [('3', 1), ('8', 1)]
+
+    def test_includes_departed_votes(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '5')
+        room.departed_votes.append(DepartedVote(name='Bob', vote='5'))
+        counts = state.vote_counts(room)
+        assert counts == [('5', 2)]
+
+    def test_departed_and_active_mixed(self):
+        room = state.create_room('c1', 'Alice')
+        state.submit_vote(room, 'c1', '8')
+        room.departed_votes.append(DepartedVote(name='Bob', vote='3'))
+        counts = state.vote_counts(room)
+        assert ('3', 1) in counts
+        assert ('8', 1) in counts
 
 
 class TestSetTopic:
@@ -819,14 +863,24 @@ class TestHandleDisconnectTimeout:
         # Only Alice remains with a vote → auto-reveal triggers
         assert room.is_revealed is True
 
-    def test_destroys_pending_vote(self):
+    def test_preserves_departed_vote(self):
         room = state.create_room('c1', 'Alice')
         state.join_room(room, 'c2', 'Bob')
         state.submit_vote(room, 'c2', '8')
         room.users['c2'].is_connected = False
         state.handle_disconnect_timeout(room.room_code, 'c2')
-        # Bob's vote should be gone (user removed entirely)
         assert 'c2' not in room.users
+        assert len(room.departed_votes) == 1
+        assert room.departed_votes[0].name == 'Bob'
+        assert room.departed_votes[0].vote == '8'
+
+    def test_no_departed_vote_when_no_vote(self):
+        room = state.create_room('c1', 'Alice')
+        state.join_room(room, 'c2', 'Bob')
+        room.users['c2'].is_connected = False
+        state.handle_disconnect_timeout(room.room_code, 'c2')
+        assert 'c2' not in room.users
+        assert len(room.departed_votes) == 0
 
     def test_notifies_room(self):
         room = state.create_room('c1', 'Alice')
