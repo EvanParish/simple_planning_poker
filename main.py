@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from fastapi.responses import RedirectResponse  # noqa: E402
 from nicegui import app, ui  # noqa: E402
 
 import state  # noqa: E402
@@ -82,6 +83,11 @@ async def _on_join_room(name_input: ui.input, room_code_input: ui.input):
 
     state.notify_room(room.room_code)
     ui.navigate.to(f'/room/{room.room_code}')
+
+
+@app.get('/support')
+def support():
+    return RedirectResponse('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
 
 
 @ui.page('/')

@@ -5,12 +5,16 @@ state in memory, and requires no accounts or database. Rooms are ephemeral: when
 removed.
 
 ## Features
-1. Create or join a room using a 6-character alphanumeric code
-2. Fibonacci voting cards plus "unsure" and "break" options
+1. Create or join a room using a 6-character alphanumeric code (with shareable invite link)
+2. Fibonacci voting cards (1–21) plus "?" (unsure) and "☕" (break) options
 3. Auto-reveal when all non-observers vote, with moderator reveal/reset controls
-4. Observer mode, vote counts, and average calculation
-5. Reconnect grace period and moderator handoff
-6. Light and dark theme toggle
+4. Observer mode, vote distribution, and average calculation (excludes ? and ☕)
+5. Moderator topic area with GitHub issue URL shortening (`repo#number` links)
+6. Countdown timer with presets (1m–5m) and custom duration, auto-reveal on expiry, and audio chimes
+7. Moderator transfer and automatic inheritance on disconnect
+8. Reconnect grace period with departed vote preservation
+9. Duplicate display-name detection
+10. Light and dark theme toggle
 
 ## Run with Docker
 ```bash
