@@ -17,11 +17,38 @@ removed.
 10. Light and dark theme toggle
 
 ## Run with Docker
+
+> [!Note]
+> Multi-arch images (`linux/amd64` and `linux/arm64`) are published to Docker Hub.
+
+Build and run locally with compose (reads `STORAGE_SECRET` from `.env`):
 ```bash
+cp .env.example .env   # then edit STORAGE_SECRET
 docker compose up --build
 ```
 
-Open `http://localhost:5858`
+Or pull and run the prebuilt image:
+```bash
+docker run -d -p 5858:5858 \
+  -e STORAGE_SECRET="$(python -c 'import os; print(os.urandom(24).hex())')" \
+  evanoddball/simple_planning_poker
+```
+
+Or run the prebuilt image using compose:
+```yml
+services:
+  app:
+    build: .
+    image: evanoddball/simple_planning_poker
+    container_name: simple-planning-poker
+    restart: unless-stopped
+    ports:
+      - "5858:5858"
+    env_file:
+      - .env
+```
+
+Open `http://localhost:5858` to connect.
 
 ## Run locally (uv)
 Requires Python 3.14 (see `.python-version`).
@@ -33,3 +60,4 @@ Requires Python 3.14 (see `.python-version`).
 
 ## Configuration
 - `STORAGE_SECRET` (optional): set a fixed secret for NiceGUI storage. If not set, one is generated at startup.
+- `RELOAD` (optional): set to `true` to enable hot-reload (development only). Defaults to off.

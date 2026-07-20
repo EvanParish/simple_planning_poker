@@ -276,7 +276,7 @@ ui.run(
     port=5858,
     title='Planning Poker',
     favicon='img/favicon.png',
-    reload=True,
+    reload=os.environ.get('RELOAD', '').lower() == 'true',
     reconnect_timeout=90.0,
     storage_secret=os.environ.get('STORAGE_SECRET', os.urandom(24).hex()),
     show=False,
